@@ -67,14 +67,15 @@ valor FIPE, referência, nome e ano. Usa a API pública fipe.parallelum.com.br (
 Não existe API gratuita e legítima que descubra o carro **pela placa**: o Sinesp Cidadão foi encerrado e os sites de "placa FIPE"
 são formulários, não APIs. Por isso a consulta por placa abaixo é opcional e paga.
 
-## Consulta por placa pelo site tabelafipebrasil.com (padrão, sem token)
-No cadastro do carro, ao **salvar** com uma placa nova (ou ao trocar a placa), o servidor lê a página
-`https://www.tabelafipebrasil.com/placa/{placa}` e grava no carro o **valor** (o "Valor FIPE" da página, ou o "Valor Venal" quando ela só traz esse),
-o **mês de referência** ("Tabela FIPE referência Outubro de 2026") e a cor. O botão **Consultar placa e FIPE** faz a mesma consulta na hora.
-- Se o site estiver fora do ar, mudar de layout ou não trouxer o valor, o carro é salvo do mesmo jeito: use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou digite à mão.
+## Consulta por placa pelo site zapcarconsulta.com.br (padrão, sem token)
+No cadastro do carro, ao **salvar** com uma placa nova (ou ao trocar a placa), o servidor consulta
+`https://www.zapcarconsulta.com.br/api/fipe-placa?placa=XXX0X00` (a mesma chamada que a página "Consulta FIPE grátis" faz) e grava no carro o
+**valor FIPE** (a versão mais provável), o **mês de referência** com o código FIPE ("outubro de 2026 · cód. 096003-9") e a cor.
+O botão **Consultar placa e FIPE** faz a mesma consulta na hora e deixa escolher outra versão quando há mais de uma.
+- Se o site estiver fora do ar, bloquear o servidor ou não achar a placa, o carro é salvo do mesmo jeito: use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou digite à mão.
 - Cache de 30 dias por placa e limite de 30 consultas por hora por usuário.
-- `PLACA_SITE=false` desliga; `PLACA_SITE_URL` troca o endereço. É leitura de página de terceiros: respeite os termos do site e não abuse.
-- Se `PLACA_API_TOKEN` (pago) ou `APIBRASIL_BEARER` + `APIBRASIL_DEVICE_TOKEN` (plano grátis em app.apibrasil.io) estiverem cadastrados, eles têm prioridade sobre o site.
+- `PLACA_SITE=false` desliga; `PLACA_SITE_URL` troca o endereço. É um serviço de terceiros sem contrato: respeite os termos do site e não abuse.
+- Se `PLACA_API_TOKEN` (pago) ou `APIBRASIL_BEARER` + `APIBRASIL_DEVICE_TOKEN` estiverem cadastrados, eles têm prioridade sobre o site.
 
 ## Consulta de placa e FIPE (opcional, paga)
 No cadastro do carro, o botão **Consultar placa e FIPE** preenche modelo, ano, cor e valor FIPE a partir da placa.

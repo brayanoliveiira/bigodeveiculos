@@ -81,39 +81,13 @@ function normalizeApiBrasil(dadosBody, fipeBody, placa) {
   return normalize(raw, placa);
 }
 
-/** HTML -> texto com uma linha por linha de tabela e " | " entre as colunas. */
-function htmlToText(html) {
-  const ent = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ccedil: 'ç', atilde: 'ã', otilde: 'õ', eacute: 'é', ecirc: 'ê', aacute: 'á', iacute: 'í', oacute: 'ó', uacute: 'ú', Ccedil: 'Ç', Eacute: 'É', Aacute: 'Á' };
-  return String(html || '')
-    .replace(/<(script|style|noscript|svg)[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<\/(td|th)>/gi, ' | ').replace(/<\/(tr|p|div|li|h[1-6]|table|section)>|<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&([a-zA-Z]+);/g, (m, n) => ent[n] != null ? ent[n] : m)
-    .split('\n').map((l) => l.replace(/[ \t\u00a0]+/g, ' ').replace(/(\|\s*)+$/, '').trim()).filter(Boolean).join('\n');
-}
-/** Valor do rótulo: "Marca: GWM", "Marca | GWM" ou "Marca\nGWM". */
-function campo(text, ...rotulos) {
-  for (const r of rotulos) {
-    const m = text.match(new RegExp(`(?:^|\\n|\\|)\\s*${r}\\s*(?:(?:[:|]\\s*)+|\\n)([^\\n|]{1,80})`, 'i'));
-    if (m && m[1].trim()) return m[1].trim();
-  }
-  return null;
-}
-/** Página tabelafipebrasil.com/placa/XXX -> mesmo formato do normalize(). Valor: "Valor FIPE" se existir, senão o "Valor Venal". */
-function parseSite(html, placa) {
-  const text = htmlToText(html);
-  const marca = campo(text, 'Marca'), modelo = campo(text, 'Modelo');
-  if (!marca && !modelo) return null;
-  const anoFab = (campo(text, 'Ano de fabrica[cç][aã]o', 'Ano fabrica[cç][aã]o', 'Ano') || '').match(/\d{4}/);
-  const anoMod = (campo(text, 'Ano modelo', 'Ano do modelo') || '').match(/\d{4}/) || (text.match(/ano modelo\s*:?\s*(\d{4})/i) || [])[1];
-  const money = (re) => { const m = text.match(re); return m ? parseBRL(m[1]) : null; };
-  const valor = money(/valor\s+fipe\s*(?:[:|]\s*)*R\$\s*([\d.]+(?:,\d{2})?)/i) || money(/valor\s+venal\s*(?:[:|]\s*)*R\$\s*([\d.]+(?:,\d{2})?)/i);
-  const ref = (text.match(/refer[êe]ncia\s*:?\s*([A-Za-zçÇãÃ]+\s+de\s+\d{4})/i) || [])[1] || null;
-  const cod = (campo(text, 'C[óo]digo\\s+FIPE') || '').match(/\d{5,6}-?\w?/);
+/** Resposta de zapcarconsulta.com.br/api/fipe-placa ({ veiculo, fipe[], tem_fipe }) -> normalize(). */
+function parseSite(j, placa) {
+  const v = j && j.veiculo;
+  if (!v || (!v.marca && !v.modelo)) return null;
   return normalize({
-    marca, modelo, ano: anoFab && anoFab[0], anoModelo: Array.isArray(anoMod) ? anoMod[0] : anoMod, cor: campo(text, 'Cor'), uf: campo(text, 'UF'), municipio: campo(text, 'Munic[íi]pio'),
-    situacao: null,
-    fipe: { dados: valor ? [{ texto_valor: valor, codigo_fipe: cod && cod[0], texto_modelo: modelo, ano_modelo: anoMod, combustivel: campo(text, 'Combust[íi]vel'), mes_referencia: ref, score: 100 }] : [] },
+    marca: v.marca, modelo: v.modelo, VERSAO: v.submodelo, ano: v.ano_fabricacao || v.ano, anoModelo: v.ano, cor: v.cor, uf: v.uf, municipio: v.municipio,
+    fipe: { dados: Array.isArray(j.fipe) ? j.fipe : [] },
   }, placa);
 }
 
@@ -140,9 +114,9 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   try {
     const doFetch = cfg.fetch || fetch;
     if (site) {
-      res = await doFetch(`${String(cfg.placaSiteUrl).replace(/\/$/, '')}/${placa}`, { signal: AbortSignal.timeout(15000), headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'pt-BR,pt;q=0.9', 'user-agent': 'Mozilla/5.0 (compatible; BigodesCar/1.0)' } });
-      const html = res.ok ? await res.text() : '';
-      body = res.ok ? { __site: true, html } : null;
+      res = await doFetch(`${String(cfg.placaSiteUrl)}?placa=${encodeURIComponent(placa)}`, { signal: AbortSignal.timeout(15000), headers: { accept: 'application/json', 'accept-language': 'pt-BR,pt;q=0.9', 'user-agent': 'Mozilla/5.0 (compatible; BigodesCar/1.0)' } });
+      const j = await res.json().catch(() => null);
+      body = res.ok ? { __site: true, j } : j;
     } else if (apib) {
       const base = String(cfg.apibrasilUrl).replace(/\/$/, '');
       const hdr = { accept: 'application/json', 'content-type': 'application/json', authorization: `Bearer ${cfg.apibrasilBearer}`, devicetoken: cfg.apibrasilDevice };
@@ -164,9 +138,9 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
     throw new HttpError(502, site ? `Não consegui acessar o site de consulta (${String(motivo).slice(0, 80)}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : gratis ? `O serviço gratuito de placa não respondeu (${String(motivo).slice(0, 80)}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : 'Não consegui falar com o serviço de consulta de placa. Tente de novo em instantes.');
   }
   const msg = body && (body.mensagemRetorno || body.message || body.erro);
-  const data = body && res.ok ? (body.__site ? parseSite(body.html, placa) : body.__apib ? normalizeApiBrasil(body.dados, body.fipe, placa) : normalize(body, placa)) : null;
+  const data = body && res.ok ? (body.__site ? parseSite(body.j, placa) : body.__apib ? normalizeApiBrasil(body.dados, body.fipe, placa) : normalize(body, placa)) : null;
   if (!data) {
-    if (site) throw new HttpError(res && !res.ok ? 502 : 404, res && !res.ok ? `O site de consulta respondeu HTTP ${res.status}. Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : 'O site não trouxe dados para essa placa. Confira a placa ou use "Buscar valor na tabela FIPE".');
+    if (site) throw new HttpError(res && !res.ok ? 502 : 404, res && !res.ok ? `O site de consulta respondeu HTTP ${res.status}. Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : 'O site não achou essa placa. Confira a placa ou use "Buscar valor na tabela FIPE".');
     if (gratis) throw new HttpError(404, `O serviço gratuito não achou essa placa (resposta HTTP ${res && res.status}${msg ? ': ' + String(msg).slice(0, 80) : ''}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano).`);
     if (res && (res.status === 401 || res.status === 403)) throw new HttpError(502, apib ? 'A APIBrasil recusou os tokens. Confira APIBRASIL_BEARER e APIBRASIL_DEVICE_TOKEN.' : 'O serviço recusou o token (inválido ou sem saldo). Confira PLACA_API_TOKEN.');
     throw new HttpError(404, msg && !/^ok$/i.test(String(msg)) ? `Consulta sem resultado: ${msg}` : 'Placa não encontrada.');
@@ -176,4 +150,4 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   return { ...data, cache: false, consultadoEm: at };
 }
 
-module.exports = { parseSite, htmlToText, lookup, normalize, normalizeApiBrasil, normalizePlate, parseBRL, PLACA_RE };
+module.exports = { parseSite, lookup, normalize, normalizeApiBrasil, normalizePlate, parseBRL, PLACA_RE };

@@ -111,11 +111,16 @@ test('APIBrasil: dados + fipe com Bearer e DeviceToken', async () => {
   await a4.close();
 });
 
-test('site tabelafipebrasil: salvar carro com placa preenche FIPE e referência', async () => {
+test('site zapcarconsulta: salvar carro com placa preenche FIPE e referência', async () => {
   const seen = [];
-  const html = '<table><tr><td><b>Marca:</b></td><td>GWM</td></tr><tr><td>Modelo:</td><td>HAVAL H6 PREM PHEV</td></tr><tr><td>Ano de fabricação:</td><td>2024</td></tr><tr><td>Ano modelo:</td><td>2025</td></tr><tr><td>Cor:</td><td>CINZA</td></tr></table><p>Valor Venal:</p><p>R$ 217.356,00</p><footer>Tabela FIPE referência Outubro de 2026</footer>';
-  const a5 = await createTestApp({ adminUser: 'x1234', adminPassword: 'senha-12345', adminName: 'X', placaSite: true, placaSiteUrl: 'https://site.test/placa',
-    fetch: async (url) => { seen.push(String(url)); return String(url).endsWith('/ZZZ9Z99') ? { ok: false, status: 503, text: async () => '' } : { ok: true, status: 200, text: async () => html }; } });
+  const json = { tem_fipe: true, veiculo: { marca: 'GWM', modelo: 'HAVAL H6 PREM PHEV', submodelo: 'HAVAL', ano: '2025', ano_fabricacao: null, cor: 'CINZA', municipio: 'Brasília', uf: 'DF', placa: 'SSK3E54' },
+    fipe: [{ texto_marca: 'GWM', texto_modelo: 'Haval H6 19 1.5 (Hibrido)', texto_valor: 'R$ 195.020,00', ano_modelo: '2025', combustivel: 'Híbrido', codigo_fipe: '096008-0', mes_referencia: 'outubro de 2026', score: 46 },
+      { texto_marca: 'GWM', texto_modelo: 'Haval H6 GT 1.5 AWD (Hibrido)', texto_valor: 'R$ 236.560,00', ano_modelo: '2025', combustivel: 'Híbrido', codigo_fipe: '096003-9', mes_referencia: 'outubro de 2026', score: 52 }] };
+  const a5 = await createTestApp({ adminUser: 'x1234', adminPassword: 'senha-12345', adminName: 'X', placaSite: true, placaSiteUrl: 'https://site.test/api/fipe-placa',
+    fetch: async (url) => { seen.push(String(url));
+      if (String(url).endsWith('=ZZZ9Z99')) return { ok: false, status: 503, json: async () => null };
+      if (String(url).endsWith('=AAA0A00')) return { ok: false, status: 404, json: async () => ({ erro: 'Nenhum veículo foi encontrado para a placa AAA0A00' }) };
+      return { ok: true, status: 200, json: async () => json }; } });
   const b5 = `http://127.0.0.1:${(await a5.listen()).port}`;
   const r = await fetch(b5 + '/api/login', { method: 'POST', headers: H, body: JSON.stringify({ username: 'x1234', password: 'senha-12345' }) });
   const ck = r.headers.get('set-cookie').split(';')[0];
@@ -123,12 +128,14 @@ test('site tabelafipebrasil: salvar carro com placa preenche FIPE e referência'
   const c = await post({ name: 'Haval', placa: 'SSK3E54', dcompra: '2026-10-01', entT: 100000 });
   assert.equal(c.status, 201);
   const j = await c.json();
-  assert.equal(j.item.fipe, 217356); assert.match(j.item.fipeRef, /Outubro de 2026/); assert.equal(j.item.cor, 'Cinza'); assert.equal(j.fipeAuto.ok, true);
-  assert.equal(seen[0], 'https://site.test/placa/SSK3E54');
-  // site fora do ar: o carro é salvo mesmo assim
-  const c2 = await post({ name: 'Outro', placa: 'ZZZ9Z99', dcompra: '2026-10-01', entT: 1000 });
-  assert.equal(c2.status, 201);
-  const j2 = await c2.json();
-  assert.equal(j2.item.fipe, null); assert.equal(j2.fipeAuto.ok, false);
+  assert.equal(j.item.fipe, 236560); assert.match(j.item.fipeRef, /outubro de 2026 · cód\. 096003-9/); assert.equal(j.item.cor, 'Cinza'); assert.equal(j.fipeAuto.ok, true);
+  assert.equal(seen[0], 'https://site.test/api/fipe-placa?placa=SSK3E54');
+  // site fora do ar ou placa desconhecida: o carro é salvo mesmo assim
+  for (const placa of ['ZZZ9Z99', 'AAA0A00']) {
+    const c2 = await post({ name: 'Outro ' + placa, placa, dcompra: '2026-10-01', entT: 1000 });
+    assert.equal(c2.status, 201);
+    const j2 = await c2.json();
+    assert.equal(j2.item.fipe, null); assert.equal(j2.fipeAuto.ok, false);
+  }
   await a5.close();
 });
