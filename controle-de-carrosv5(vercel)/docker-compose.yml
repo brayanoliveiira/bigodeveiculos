@@ -1,0 +1,13 @@
+services:
+  controle:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env          # veja .env.example
+    environment:
+      DB_PATH: /data/controle.db
+    volumes:
+      - controle-data:/data  # o banco fica aqui; sobrevive a atualizações do container
+volumes:
+  controle-data:

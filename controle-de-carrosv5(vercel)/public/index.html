@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1D2025">
+<title>Bigodes Car</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="bar">
+  <div class="bar-in">
+    <header class="top" id="top" hidden>
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 48 22" aria-hidden="true"><path d="M24 8.5C21.5 4.5 16.5 3.2 11.5 5 6.5 6.8 3.2 11 1 16.5c4.2-2.7 8.6-3.2 12.4-1.6 3.6 1.5 7.4.6 10.6-2.4 3.2 3 7 3.9 10.6 2.4 3.8-1.6 8.2-1.1 12.4 1.6-2.2-5.5-5.5-9.7-10.5-11.5-5-1.8-10-.5-12.5 3.5z"/></svg>
+        <div><h1>Bigodes Car</h1><p>Estoque, gastos e vendas</p></div>
+      </div>
+      <div class="who" id="who"></div>
+    </header>
+    <nav class="tabs" id="tabs" aria-label="Seções" hidden></nav>
+  </div>
+</div>
+<div class="wrap" id="app">
+  <div id="banner"></div>
+  <main id="view"><div class="empty"><p class="mut">Carregando…</p></div></main>
+</div>
+<div id="modal" class="overlay" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<script src="/js/calc.js"></script>
+<script src="/js/reports.js"></script>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
