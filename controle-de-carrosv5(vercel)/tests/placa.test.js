@@ -91,3 +91,22 @@ test('consulta grátis (sem token): POST com a placa, sem token na URL', async (
   assert.equal(seen[0].url, 'https://livre.test/placa/consulta'); assert.equal(seen[0].opts.method, 'POST'); assert.equal(JSON.parse(seen[0].opts.body).placa, 'ABC1D23');
   await a3.close();
 });
+
+test('APIBrasil: dados + fipe com Bearer e DeviceToken', async () => {
+  const seen = [];
+  const a4 = await createTestApp({ adminUser: 'x1234', adminPassword: 'senha-12345', adminName: 'X', placaFree: false, apibrasilBearer: 'BT', apibrasilDevice: 'DT', apibrasilUrl: 'https://gw.test/api/v2',
+    fetch: async (url, opts) => { seen.push({ url: String(url), opts });
+      const dados = String(url).endsWith('/dados');
+      return { ok: true, status: 200, json: async () => dados ? { error: false, response: { MARCA: 'FIAT', MODELO: 'UNO MILLE', ano: '2010', anoModelo: '2011', cor: 'BRANCA', uf: 'SP' } }
+        : { error: false, response: { dados: [{ texto_valor: 'R$ 18.000,00', codigo_fipe: '001', texto_modelo: 'Uno Mille', ano_modelo: 2011, score: 80 }] } } }; } });
+  const b4 = `http://127.0.0.1:${(await a4.listen()).port}`;
+  const r = await fetch(b4 + '/api/login', { method: 'POST', headers: H, body: JSON.stringify({ username: 'x1234', password: 'senha-12345' }) });
+  const ck = r.headers.get('set-cookie').split(';')[0];
+  assert.equal((await (await fetch(b4 + '/api/config')).json()).placa, true);
+  const p = await fetch(b4 + '/api/placa/abc1d23', { headers: { ...H, cookie: ck } });
+  assert.equal(p.status, 200);
+  const j = await p.json();
+  assert.equal(j.marca, 'Fiat'); assert.equal(j.fipe[0].valor, 18000); assert.equal(j.ano, 2011);
+  assert.ok(seen.every((s) => s.opts.headers.authorization === 'Bearer BT' && s.opts.headers.devicetoken === 'DT'));
+  await a4.close();
+});

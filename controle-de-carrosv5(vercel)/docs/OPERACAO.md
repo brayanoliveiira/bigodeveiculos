@@ -67,12 +67,13 @@ valor FIPE, referência, nome e ano. Usa a API pública fipe.parallelum.com.br (
 Não existe API gratuita e legítima que descubra o carro **pela placa**: o Sinesp Cidadão foi encerrado e os sites de "placa FIPE"
 são formulários, não APIs. Por isso a consulta por placa abaixo é opcional e paga.
 
-## Consulta por placa grátis (sem token)
-Sem `PLACA_API_TOKEN`, o botão **Consultar placa e FIPE** usa um serviço gratuito e **não oficial**
-(`https://placa-fipe.apibrasil.com.br/placa/consulta`, o mesmo do repositório fraurino/consulta-placa-fipe): o servidor faz um POST com a placa
-e preenche modelo, ano, cor e valor FIPE. Por ser gratuito e sem garantia, pode ficar fora do ar, mudar de formato ou parar de responder;
-quando isso acontece o app avisa e você usa a busca marca > modelo > ano. `PLACA_FREE=false` desliga; `PLACA_FREE_URL` troca o endereço.
-Se `PLACA_API_TOKEN` existir, o serviço pago tem prioridade.
+## Consulta por placa grátis (APIBrasil, 100/dia)
+O serviço gratuito antigo (placa-fipe.apibrasil.com.br) saiu do ar. A opção grátis que existe hoje é o plano gratuito da APIBrasil
+(100 consultas por dia), que exige uma conta sua (o token não dá para gerar sozinho):
+1. Crie conta em app.apibrasil.io. 2. Em **Minhas APIs** abra **API Placa Dados** e copie o **BearerToken** e o **DeviceToken**.
+3. Cadastre `APIBRASIL_BEARER` e `APIBRASIL_DEVICE_TOKEN` (no `.env`, ou em Settings > Environment Variables na Vercel) e reimplante/reinicie.
+O app chama `POST https://gateway.apibrasil.io/api/v2/vehicles/dados` e `/vehicles/fipe`. Sem esses tokens, use a busca marca > modelo > ano (grátis, sem conta).
+`PLACA_API_TOKEN` (serviço pago) tem prioridade se existir.
 
 ## Consulta de placa e FIPE (opcional, paga)
 No cadastro do carro, o botão **Consultar placa e FIPE** preenche modelo, ano, cor e valor FIPE a partir da placa.

@@ -55,6 +55,32 @@ function normalize(raw, placa) {
   };
 }
 
+/** Acha o primeiro objeto aninhado que tenha algum dos campos (as respostas do provedor mudam de formato). */
+function findObj(o, keys, depth = 0) {
+  if (!o || typeof o !== 'object' || depth > 5) return null;
+  if (!Array.isArray(o) && keys.some((k) => o[k] != null && o[k] !== '')) return o;
+  for (const v of Object.values(o)) { const r = findObj(v, keys, depth + 1); if (r) return r; }
+  return null;
+}
+const pick = (o, ...ks) => { for (const k of ks) { const f = Object.keys(o || {}).find((x) => x.toLowerCase() === k.toLowerCase()); if (f && o[f] != null && o[f] !== '') return o[f]; } return null; };
+
+/** Resposta da APIBrasil (dados + fipe) -> mesmo formato do normalize(). */
+function normalizeApiBrasil(dadosBody, fipeBody, placa) {
+  const d = findObj(dadosBody, ['marca', 'MARCA', 'modelo', 'MODELO']);
+  if (!d) return null;
+  const raw = { marca: pick(d, 'marca'), modelo: pick(d, 'modelo'), VERSAO: pick(d, 'versao', 'submodelo'), ano: pick(d, 'ano', 'anoFabricacao'), anoModelo: pick(d, 'anoModelo', 'ano_modelo'), cor: pick(d, 'cor'), uf: pick(d, 'uf'), municipio: pick(d, 'municipio'), situacao: pick(d, 'situacao') };
+  let lista = [];
+  const f = fipeBody && (fipeBody.response || fipeBody.data || fipeBody.dados || fipeBody);
+  const arr = Array.isArray(f) ? f : (f && (f.dados || f.fipe || f.data)) || (f ? [f] : []);
+  for (const it of (Array.isArray(arr) ? arr : [arr])) {
+    if (!it || typeof it !== 'object') continue;
+    const v = pick(it, 'texto_valor', 'valor', 'value', 'preco');
+    if (v != null) lista.push({ texto_valor: v, codigo_fipe: pick(it, 'codigo_fipe', 'codigoFipe', 'codigo'), texto_modelo: pick(it, 'texto_modelo', 'modelo', 'model'), ano_modelo: pick(it, 'ano_modelo', 'anoModelo', 'ano'), combustivel: pick(it, 'combustivel'), mes_referencia: pick(it, 'mes_referencia', 'referencia', 'mesReferencia'), score: pick(it, 'score') || 0 });
+  }
+  raw.fipe = { dados: lista };
+  return normalize(raw, placa);
+}
+
 const hits = new Map(); // userId -> [timestamps]
 function throttle(userId) {
   const t = Date.now(), list = (hits.get(userId) || []).filter((x) => t - x < 3600000);
@@ -65,8 +91,9 @@ function throttle(userId) {
 async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   const placa = normalizePlate(rawPlaca);
   if (!PLACA_RE.test(placa)) throw new HttpError(400, 'Placa inválida. Use o formato ABC1D23 ou ABC1234.');
-  const gratis = !cfg.placaToken;
-  if (gratis && !cfg.placaFree) throw new HttpError(503, 'A consulta de placa ainda não foi ativada. Coloque o token em PLACA_API_TOKEN (veja docs/OPERACAO.md).');
+  const apib = !cfg.placaToken && !!(cfg.apibrasilBearer && cfg.apibrasilDevice);
+  const gratis = !cfg.placaToken && !apib;
+  if (gratis && !cfg.placaFree) throw new HttpError(503, 'A consulta de placa ainda não foi ativada. Cadastre APIBRASIL_BEARER e APIBRASIL_DEVICE_TOKEN (veja docs/OPERACAO.md).');
   if (!fresh) {
     const c = await db.get('SELECT json, at FROM placa_cache WHERE placa = ?', placa);
     if (c && Date.now() - Date.parse(c.at) < TTL_MS) return { ...JSON.parse(c.json), cache: true, consultadoEm: c.at };
@@ -75,7 +102,14 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   let res, body;
   try {
     const doFetch = cfg.fetch || fetch;
-    if (gratis) {
+    if (apib) {
+      const base = String(cfg.apibrasilUrl).replace(/\/$/, '');
+      const hdr = { accept: 'application/json', 'content-type': 'application/json', authorization: `Bearer ${cfg.apibrasilBearer}`, devicetoken: cfg.apibrasilDevice };
+      const call = async (rota) => { const r = await doFetch(`${base}/vehicles/${rota}`, { method: 'POST', signal: AbortSignal.timeout(20000), headers: hdr, body: JSON.stringify({ placa }) }); return { r, b: await r.json().catch(() => null) }; };
+      const [dd, ff] = await Promise.all([call('dados'), call('fipe').catch(() => ({ r: { ok: false }, b: null }))]);
+      res = dd.r;
+      body = res.ok && dd.b && dd.b.error !== true ? { __apib: true, dados: dd.b, fipe: ff.r.ok ? ff.b : null } : dd.b;
+    } else if (gratis) {
       // Serviço gratuito e não oficial: POST com a placa em JSON, sem token.
       res = await doFetch(String(cfg.placaFreeUrl), { method: 'POST', signal: AbortSignal.timeout(15000), headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ placa }) });
       body = await res.json().catch(() => null);
@@ -89,10 +123,10 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
     throw new HttpError(502, gratis ? `O serviço gratuito de placa não respondeu (${String(motivo).slice(0, 80)}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : 'Não consegui falar com o serviço de consulta de placa. Tente de novo em instantes.');
   }
   const msg = body && (body.mensagemRetorno || body.message || body.erro);
-  const data = body && res.ok ? normalize(body, placa) : null;
+  const data = body && res.ok ? (body.__apib ? normalizeApiBrasil(body.dados, body.fipe, placa) : normalize(body, placa)) : null;
   if (!data) {
     if (gratis) throw new HttpError(404, `O serviço gratuito não achou essa placa (resposta HTTP ${res && res.status}${msg ? ': ' + String(msg).slice(0, 80) : ''}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano).`);
-    if (res && (res.status === 401 || res.status === 403)) throw new HttpError(502, 'O serviço recusou o token (inválido ou sem saldo). Confira PLACA_API_TOKEN.');
+    if (res && (res.status === 401 || res.status === 403)) throw new HttpError(502, apib ? 'A APIBrasil recusou os tokens. Confira APIBRASIL_BEARER e APIBRASIL_DEVICE_TOKEN.' : 'O serviço recusou o token (inválido ou sem saldo). Confira PLACA_API_TOKEN.');
     throw new HttpError(404, msg && !/^ok$/i.test(String(msg)) ? `Consulta sem resultado: ${msg}` : 'Placa não encontrada.');
   }
   const at = new Date().toISOString();
@@ -100,4 +134,4 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   return { ...data, cache: false, consultadoEm: at };
 }
 
-module.exports = { lookup, normalize, normalizePlate, parseBRL, PLACA_RE };
+module.exports = { lookup, normalize, normalizeApiBrasil, normalizePlate, parseBRL, PLACA_RE };
