@@ -84,13 +84,14 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
       res = await doFetch(`${String(cfg.placaUrl).replace(/\/$/, '')}/${placa}/${encodeURIComponent(cfg.placaToken)}`, { signal: AbortSignal.timeout(12000), headers: { accept: 'application/json' } });
       body = await res.json().catch(() => null);
     }
-  } catch {
-    throw new HttpError(502, gratis ? 'O serviço gratuito de placa não respondeu. Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.' : 'Não consegui falar com o serviço de consulta de placa. Tente de novo em instantes.');
+  } catch (e) {
+    const motivo = e && (e.cause && (e.cause.code || e.cause.message) || e.name || e.message) || 'erro';
+    throw new HttpError(502, gratis ? `O serviço gratuito de placa não respondeu (${String(motivo).slice(0, 80)}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : 'Não consegui falar com o serviço de consulta de placa. Tente de novo em instantes.');
   }
   const msg = body && (body.mensagemRetorno || body.message || body.erro);
   const data = body && res.ok ? normalize(body, placa) : null;
   if (!data) {
-    if (gratis) throw new HttpError(404, 'O serviço gratuito não achou essa placa (ou está fora do ar). Use "Buscar valor na tabela FIPE" (marca > modelo > ano).');
+    if (gratis) throw new HttpError(404, `O serviço gratuito não achou essa placa (resposta HTTP ${res && res.status}${msg ? ': ' + String(msg).slice(0, 80) : ''}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano).`);
     if (res && (res.status === 401 || res.status === 403)) throw new HttpError(502, 'O serviço recusou o token (inválido ou sem saldo). Confira PLACA_API_TOKEN.');
     throw new HttpError(404, msg && !/^ok$/i.test(String(msg)) ? `Consulta sem resultado: ${msg}` : 'Placa não encontrada.');
   }
