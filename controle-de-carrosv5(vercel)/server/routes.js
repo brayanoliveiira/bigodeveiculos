@@ -34,7 +34,7 @@ function register(router, { db, cfg, limiter }) {
     await db.get('SELECT 1 AS ok');
     return { ok: true };
   });
-  router.add('GET', '/api/config', {}, async () => ({ lists: { locs: lists.locs, cats: lists.cats, status: lists.status, pstatus: lists.pstatus, rstatus: lists.rstatus, divis: lists.divis, roles: lists.roles }, placa: !!cfg.placaToken || !!cfg.placaFree || !!(cfg.apibrasilBearer && cfg.apibrasilDevice) }));
+  router.add('GET', '/api/config', {}, async () => ({ lists: { locs: lists.locs, cats: lists.cats, status: lists.status, pstatus: lists.pstatus, rstatus: lists.rstatus, divis: lists.divis, roles: lists.roles }, placa: !!cfg.placaToken || !!cfg.placaSite || !!cfg.placaFree || !!(cfg.apibrasilBearer && cfg.apibrasilDevice) }));
 
   router.add('POST', '/api/login', {}, async (ctx) => {
     const username = String(ctx.body.username || '').trim();
@@ -175,9 +175,26 @@ function register(router, { db, cfg, limiter }) {
     ctx.status = 201;
     return r;
   });
+  /** Depois de salvar o carro com placa nova: consulta o site e grava valor FIPE, mês de referência e cor. Falha aqui nunca desfaz o cadastro. */
+  async function autoFipe(ctx, item) {
+    if (!item || !item.placa || (!cfg.placaToken && !cfg.placaSite && !cfg.placaFree && !(cfg.apibrasilBearer && cfg.apibrasilDevice))) return { item };
+    try {
+      const d = await lookupPlaca({ db, cfg, user: ctx.user, placa: item.placa });
+      const o = d.fipe && d.fipe[0];
+      const patch = {};
+      if (o) { patch.fipe = o.valor; patch.fipeRef = [o.referencia, o.codigo && 'cód. ' + o.codigo].filter(Boolean).join(' · ') || null; }
+      if (!item.cor && d.cor) patch.cor = d.cor;
+      if (!Object.keys(patch).length) return { item, fipeAuto: { ok: false, msg: 'O site não trouxe o valor FIPE para esta placa.' } };
+      const r = await S.updateItem(db, ctx.user, 'cars', item.id, patch);
+      return { item: r.item, fipeAuto: { ok: !!o, msg: o ? 'Valor FIPE e referência preenchidos pela placa.' : 'Dados do carro preenchidos, mas sem valor FIPE.' } };
+    } catch (e) {
+      return { item, fipeAuto: { ok: false, msg: e && e.message ? e.message : 'Consulta da placa falhou.' } };
+    }
+  }
   router.add('POST', '/api/:entity', { role: 'write' }, async (ctx) => {
     const item = await S.createItem(db, ctx.user, entity(ctx), ctx.body);
     ctx.status = 201;
+    if (entity(ctx) === 'cars' && item.fipe == null) return await autoFipe(ctx, item);
     return { item };
   });
   router.add('PATCH', '/api/:entity/:id', { role: 'write' }, async (ctx) => {
@@ -185,7 +202,9 @@ function register(router, { db, cfg, limiter }) {
     const { _action, ...fields } = ctx.body;
     if (_action !== undefined && _action !== 'move') throw new HttpError(400, 'Ação desconhecida.');
     if (_action === 'move' && name !== 'cars') throw new HttpError(400, 'Só carros podem ser movidos.');
-    return await S.updateItem(db, ctx.user, name, id(ctx), fields, { move: _action === 'move' });
+    const r = await S.updateItem(db, ctx.user, name, id(ctx), fields, { move: _action === 'move' });
+    if (name === 'cars' && !_action && r.changed && 'placa' in fields && !('fipe' in fields) && r.item.placa) return { ...r, ...(await autoFipe(ctx, r.item)) };
+    return r;
   });
   router.add('DELETE', '/api/:entity/:id', { role: 'write' }, async (ctx) => await S.setDeleted(db, ctx.user, entity(ctx), id(ctx), true));
   router.add('POST', '/api/:entity/:id/restore', { role: 'write' }, async (ctx) => await S.setDeleted(db, ctx.user, entity(ctx), id(ctx), false));

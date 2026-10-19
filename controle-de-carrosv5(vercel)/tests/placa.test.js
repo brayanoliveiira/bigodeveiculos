@@ -110,3 +110,25 @@ test('APIBrasil: dados + fipe com Bearer e DeviceToken', async () => {
   assert.ok(seen.every((s) => s.opts.headers.authorization === 'Bearer BT' && s.opts.headers.devicetoken === 'DT'));
   await a4.close();
 });
+
+test('site tabelafipebrasil: salvar carro com placa preenche FIPE e referência', async () => {
+  const seen = [];
+  const html = '<table><tr><td><b>Marca:</b></td><td>GWM</td></tr><tr><td>Modelo:</td><td>HAVAL H6 PREM PHEV</td></tr><tr><td>Ano de fabricação:</td><td>2024</td></tr><tr><td>Ano modelo:</td><td>2025</td></tr><tr><td>Cor:</td><td>CINZA</td></tr></table><p>Valor Venal:</p><p>R$ 217.356,00</p><footer>Tabela FIPE referência Outubro de 2026</footer>';
+  const a5 = await createTestApp({ adminUser: 'x1234', adminPassword: 'senha-12345', adminName: 'X', placaSite: true, placaSiteUrl: 'https://site.test/placa',
+    fetch: async (url) => { seen.push(String(url)); return String(url).endsWith('/ZZZ9Z99') ? { ok: false, status: 503, text: async () => '' } : { ok: true, status: 200, text: async () => html }; } });
+  const b5 = `http://127.0.0.1:${(await a5.listen()).port}`;
+  const r = await fetch(b5 + '/api/login', { method: 'POST', headers: H, body: JSON.stringify({ username: 'x1234', password: 'senha-12345' }) });
+  const ck = r.headers.get('set-cookie').split(';')[0];
+  const post = (body) => fetch(b5 + '/api/cars', { method: 'POST', headers: { ...H, cookie: ck }, body: JSON.stringify(body) });
+  const c = await post({ name: 'Haval', placa: 'SSK3E54', dcompra: '2026-10-01', entT: 100000 });
+  assert.equal(c.status, 201);
+  const j = await c.json();
+  assert.equal(j.item.fipe, 217356); assert.match(j.item.fipeRef, /Outubro de 2026/); assert.equal(j.item.cor, 'Cinza'); assert.equal(j.fipeAuto.ok, true);
+  assert.equal(seen[0], 'https://site.test/placa/SSK3E54');
+  // site fora do ar: o carro é salvo mesmo assim
+  const c2 = await post({ name: 'Outro', placa: 'ZZZ9Z99', dcompra: '2026-10-01', entT: 1000 });
+  assert.equal(c2.status, 201);
+  const j2 = await c2.json();
+  assert.equal(j2.item.fipe, null); assert.equal(j2.fipeAuto.ok, false);
+  await a5.close();
+});

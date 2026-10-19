@@ -67,13 +67,14 @@ valor FIPE, referência, nome e ano. Usa a API pública fipe.parallelum.com.br (
 Não existe API gratuita e legítima que descubra o carro **pela placa**: o Sinesp Cidadão foi encerrado e os sites de "placa FIPE"
 são formulários, não APIs. Por isso a consulta por placa abaixo é opcional e paga.
 
-## Consulta por placa grátis (APIBrasil, 100/dia)
-O serviço gratuito antigo (placa-fipe.apibrasil.com.br) saiu do ar. A opção grátis que existe hoje é o plano gratuito da APIBrasil
-(100 consultas por dia), que exige uma conta sua (o token não dá para gerar sozinho):
-1. Crie conta em app.apibrasil.io. 2. Em **Minhas APIs** abra **API Placa Dados** e copie o **BearerToken** e o **DeviceToken**.
-3. Cadastre `APIBRASIL_BEARER` e `APIBRASIL_DEVICE_TOKEN` (no `.env`, ou em Settings > Environment Variables na Vercel) e reimplante/reinicie.
-O app chama `POST https://gateway.apibrasil.io/api/v2/vehicles/dados` e `/vehicles/fipe`. Sem esses tokens, use a busca marca > modelo > ano (grátis, sem conta).
-`PLACA_API_TOKEN` (serviço pago) tem prioridade se existir.
+## Consulta por placa pelo site tabelafipebrasil.com (padrão, sem token)
+No cadastro do carro, ao **salvar** com uma placa nova (ou ao trocar a placa), o servidor lê a página
+`https://www.tabelafipebrasil.com/placa/{placa}` e grava no carro o **valor** (o "Valor FIPE" da página, ou o "Valor Venal" quando ela só traz esse),
+o **mês de referência** ("Tabela FIPE referência Outubro de 2026") e a cor. O botão **Consultar placa e FIPE** faz a mesma consulta na hora.
+- Se o site estiver fora do ar, mudar de layout ou não trouxer o valor, o carro é salvo do mesmo jeito: use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou digite à mão.
+- Cache de 30 dias por placa e limite de 30 consultas por hora por usuário.
+- `PLACA_SITE=false` desliga; `PLACA_SITE_URL` troca o endereço. É leitura de página de terceiros: respeite os termos do site e não abuse.
+- Se `PLACA_API_TOKEN` (pago) ou `APIBRASIL_BEARER` + `APIBRASIL_DEVICE_TOKEN` (plano grátis em app.apibrasil.io) estiverem cadastrados, eles têm prioridade sobre o site.
 
 ## Consulta de placa e FIPE (opcional, paga)
 No cadastro do carro, o botão **Consultar placa e FIPE** preenche modelo, ano, cor e valor FIPE a partir da placa.

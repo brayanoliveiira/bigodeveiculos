@@ -7,7 +7,7 @@ const { createApp } = require('../../server/app');
 
 let n = 0;
 async function createTestApp(extra = {}) {
-  const base = { port: 0, host: '127.0.0.1', ...extra };
+  const base = { port: 0, host: '127.0.0.1', placaSite: false, ...extra }; // nunca chama o site de verdade nos testes
   if (process.env.TEST_PG !== '1') return createApp({ dbPath: ':memory:', ...base });
   const { Pool } = require('./pgwire');
   const u = new URL(process.env.TEST_PG_URL || 'postgres://postgres@127.0.0.1:5432');

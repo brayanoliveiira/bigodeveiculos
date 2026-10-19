@@ -39,6 +39,9 @@ function fromEnv(env = process.env) {
     placaUrl: env.PLACA_API_URL || 'https://wdapi2.com.br/consulta',
     // Consulta por placa GRÁTIS (não oficial, sem token): usada quando não há PLACA_API_TOKEN. PLACA_FREE=false desliga.
     placaFree: env.PLACA_FREE === 'true',
+    // Consulta por placa no site tabelafipebrasil.com (padrão, sem token). PLACA_SITE=false desliga.
+    placaSite: env.PLACA_SITE !== 'false',
+    placaSiteUrl: env.PLACA_SITE_URL || 'https://www.tabelafipebrasil.com/placa',
     // APIBrasil (plano grátis, 100 consultas/dia): conta em app.apibrasil.io -> Minhas APIs -> API Placa Dados.
     apibrasilBearer: env.APIBRASIL_BEARER || '',
     apibrasilDevice: env.APIBRASIL_DEVICE_TOKEN || '',
