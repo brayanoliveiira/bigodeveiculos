@@ -1,0 +1,12 @@
+node_modules/
+data/*
+!data/.gitkeep
+backups/*
+!backups/.gitkeep
+.env
+*.db
+*.db-wal
+*.db-shm
+.git
+tests
+docs

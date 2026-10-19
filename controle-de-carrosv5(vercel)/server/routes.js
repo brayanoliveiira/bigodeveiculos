@@ -34,7 +34,7 @@ function register(router, { db, cfg, limiter }) {
     await db.get('SELECT 1 AS ok');
     return { ok: true };
   });
-  router.add('GET', '/api/config', {}, async () => ({ lists: { locs: lists.locs, cats: lists.cats, status: lists.status, pstatus: lists.pstatus, rstatus: lists.rstatus, divis: lists.divis, roles: lists.roles }, placa: !!cfg.placaToken }));
+  router.add('GET', '/api/config', {}, async () => ({ lists: { locs: lists.locs, cats: lists.cats, status: lists.status, pstatus: lists.pstatus, rstatus: lists.rstatus, divis: lists.divis, roles: lists.roles }, placa: !!cfg.placaToken || !!cfg.placaFree }));
 
   router.add('POST', '/api/login', {}, async (ctx) => {
     const username = String(ctx.body.username || '').trim();

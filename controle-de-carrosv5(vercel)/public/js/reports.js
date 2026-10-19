@@ -154,7 +154,7 @@ var Reports = (function () {
   /* 6. Estoque: capital parado por sócio, idade dos carros, projeção. */
   var IDADES = ['Até 30 dias', '31 a 60 dias', '61 a 90 dias', 'Mais de 90 dias', 'Sem data de compra'];
   function estoque(D, settings) {
-    var rows = list(D).filter(function (d) { return !d.vendido; }).map(function (d) {
+    var rows = list(D).filter(function (d) { return !d.vendido && !d.entregue; }).map(function (d) {
       var f = d.dias === null ? 4 : d.dias <= 30 ? 0 : d.dias <= 60 ? 1 : d.dias <= 90 ? 2 : 3;
       return { carId: d.c.id, car: d.c.name, placa: d.c.placa || '', status: d.c.status, loc: d.c.loc || '', dias: d.dias, faixa: f, invA: d.invA, invB: d.invB, custo: d.invA + d.invB, dono: d.consig ? d.c.dono : '', repasse: d.repasse,
         prev: d.prev, pmin: d.pmin, pmeta: d.pmeta, anun: N0(d.c.anun), proj: d.proj, parado: d.dias !== null && d.dias > N0(settings && settings.alerta) };
@@ -172,9 +172,9 @@ var Reports = (function () {
 
   /* 6b. Consignados: carros de terceiros. Repasse ao dono, o que já foi repassado e a comissão. */
   function consignados(D, today) {
-    var rows = list(D).filter(function (d) { return d.consig; }).map(function (d) {
+    var rows = list(D).filter(function (d) { return d.consig && !d.entregue; }).map(function (d) {
       return { carId: d.c.id, car: d.c.name, placa: d.c.placa || '', dono: d.c.dono, status: d.c.status, dvenda: d.c.dvenda || '', vvenda: N0(d.c.vvenda),
-        repasse: d.repasse, repassado: d.repPago, falta: d.repFalta, gastos: d.gast, comissao: d.lucro, comA: d.lucA, comB: d.lucB, vendido: d.vendido,
+        repasse: d.repasse, repassado: d.repPago + d.emEspecie, falta: d.repFalta, gastos: d.gast, comissao: d.lucro, comA: d.lucA, comB: d.lucB, vendido: d.vendido,
         minimo: d.pmin, anun: N0(d.c.anun), proj: d.proj, recebido: d.recebido, aReceber: d.aReceber };
     }).sort(function (a, b) { return (a.vendido ? 1 : 0) - (b.vendido ? 1 : 0) || String(b.dvenda).localeCompare(String(a.dvenda)); });
     var sold = rows.filter(function (r) { return r.vendido && r.comissao !== null; });

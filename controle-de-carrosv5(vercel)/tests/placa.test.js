@@ -60,7 +60,7 @@ test('erros: placa inválida, token recusado, sem resultado, rede', async () => 
 });
 
 test('sem token: 503 e /api/config avisa a tela', async () => {
-  const a2 = await createTestApp({ adminUser: 'x1234', adminPassword: 'senha-12345', adminName: 'X' });
+  const a2 = await createTestApp({ adminUser: 'x1234', adminPassword: 'senha-12345', adminName: 'X', placaFree: false });
   const b2 = `http://127.0.0.1:${(await a2.listen()).port}`;
   const r = await fetch(b2 + '/api/login', { method: 'POST', headers: H, body: JSON.stringify({ username: 'x1234', password: 'senha-12345' }) });
   const ck = r.headers.get('set-cookie').split(';')[0];
@@ -73,4 +73,21 @@ test('sem token: 503 e /api/config avisa a tela', async () => {
 test('carro guarda cor e FIPE', async () => {
   const r = await call('POST', '/api/cars', { name: 'VW Gol', placa: 'abc1d23', cor: 'Prata', fipe: 41250.5, fipeRef: 'out/2026 · 005002-7' });
   assert.equal(r.status, 201); assert.equal(r.json.item.fipe, 41250.5); assert.equal(r.json.item.placa, 'ABC1D23');
+});
+
+test('consulta grátis (sem token): POST com a placa, sem token na URL', async () => {
+  const seen = [];
+  const a3 = await createTestApp({ adminUser: 'x1234', adminPassword: 'senha-12345', adminName: 'X', placaFree: true, placaFreeUrl: 'https://livre.test/placa/consulta',
+    fetch: async (url, opts) => { seen.push({ url: String(url), opts }); return { ok: true, status: 200, json: async () => ({ data: { marca: 'VW - VolksWagen', modelo: 'GOL 1.0', ano: '2016', anoModelo: '2016', cor: 'PRATA',
+      fipe: { dados: [{ texto_valor: 'R$ 41.250,50', codigo_fipe: '005002-7', texto_modelo: 'Gol 1.0', ano_modelo: 2016, mes_referencia: 'outubro de 2026', score: 90 }] } } }) }; } });
+  const b3 = `http://127.0.0.1:${(await a3.listen()).port}`;
+  const r = await fetch(b3 + '/api/login', { method: 'POST', headers: H, body: JSON.stringify({ username: 'x1234', password: 'senha-12345' }) });
+  const ck = r.headers.get('set-cookie').split(';')[0];
+  assert.equal((await (await fetch(b3 + '/api/config')).json()).placa, true);
+  const p = await fetch(b3 + '/api/placa/abc1d23', { headers: { ...H, cookie: ck } });
+  assert.equal(p.status, 200);
+  const j = await p.json();
+  assert.equal(j.marca, 'Volkswagen'); assert.equal(j.fipe[0].valor, 41250.5);
+  assert.equal(seen[0].url, 'https://livre.test/placa/consulta'); assert.equal(seen[0].opts.method, 'POST'); assert.equal(JSON.parse(seen[0].opts.body).placa, 'ABC1D23');
+  await a3.close();
 });

@@ -1,0 +1,9 @@
+node_modules
+data
+backups
+.env
+tests
+scripts/instalar-mac.sh
+*.db
+*.db-wal
+*.db-shm

@@ -112,3 +112,16 @@ t('pagamento parcial: parcela fica em aberto com o resto; atrasa só o que falta
   near(D.g.recebido, 400, 'recebido'); near(D.g.aReceber, 1600, 'a receber'); near(D.g.atrasado, 600, 'atrasado');
   assert.equal(D.g.parcelas[0].st, 'Parcial'); near(D.g.parcelas[0].falta, 600, 'falta');
 });
+
+t('consignado vendido com carro na troca que fica com o dono: comissão normal, carro não é nosso, valor abate o repasse', () => {
+  const cs = [
+    { id: 'k', name: 'Ka', status: 'Vendido', dono: 'Felipe', repasse: 22000, vvenda: 30000, dvenda: '2026-10-01', divis: '50/50' },
+    { id: 't', name: 'Celta (troca)', status: 'Em estoque', dono: 'felipe', entT: 8000, origemId: 'k', dcompra: '2026-10-01' },
+  ];
+  const D = C.compute(cs, [{ carId: 'k', valor: 500, quem: 'A' }], [], SET, HOJE, [], [], [{ carId: 'k', valor: 6000, quem: 'B' }]);
+  near(D.k.lucro, 7500, 'comissão = 30000 − 22000 − 500'); near(D.k.cash, 22000, 'dinheiro = venda − carro de troca');
+  near(D.k.emEspecie, 8000, 'pago em carro'); near(D.k.repFalta, 8000, 'falta repassar em dinheiro = 22000 − 8000 − 6000');
+  assert.equal(D.t.entregue, true); near(D.t.invA + D.t.invB, 0, 'ninguém investiu no carro de troca');
+  const S2 = C.summary(D, [], [], SET, HOJE, 2026);
+  assert.equal(S2.estoque, 0);
+});

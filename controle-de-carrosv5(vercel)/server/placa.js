@@ -65,7 +65,8 @@ function throttle(userId) {
 async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   const placa = normalizePlate(rawPlaca);
   if (!PLACA_RE.test(placa)) throw new HttpError(400, 'Placa inválida. Use o formato ABC1D23 ou ABC1234.');
-  if (!cfg.placaToken) throw new HttpError(503, 'A consulta de placa ainda não foi ativada. Coloque o token em PLACA_API_TOKEN (veja docs/OPERACAO.md).');
+  const gratis = !cfg.placaToken;
+  if (gratis && !cfg.placaFree) throw new HttpError(503, 'A consulta de placa ainda não foi ativada. Coloque o token em PLACA_API_TOKEN (veja docs/OPERACAO.md).');
   if (!fresh) {
     const c = await db.get('SELECT json, at FROM placa_cache WHERE placa = ?', placa);
     if (c && Date.now() - Date.parse(c.at) < TTL_MS) return { ...JSON.parse(c.json), cache: true, consultadoEm: c.at };
@@ -74,14 +75,22 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   let res, body;
   try {
     const doFetch = cfg.fetch || fetch;
-    res = await doFetch(`${String(cfg.placaUrl).replace(/\/$/, '')}/${placa}/${encodeURIComponent(cfg.placaToken)}`, { signal: AbortSignal.timeout(12000), headers: { accept: 'application/json' } });
-    body = await res.json().catch(() => null);
+    if (gratis) {
+      // Serviço gratuito e não oficial: POST com a placa em JSON, sem token.
+      res = await doFetch(String(cfg.placaFreeUrl), { method: 'POST', signal: AbortSignal.timeout(15000), headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ placa }) });
+      body = await res.json().catch(() => null);
+      if (body && typeof body === 'object' && !body.marca && !body.MARCA && !body.modelo && !body.MODELO) body = body.data || body.dados || body.result || body.resultado || body;
+    } else {
+      res = await doFetch(`${String(cfg.placaUrl).replace(/\/$/, '')}/${placa}/${encodeURIComponent(cfg.placaToken)}`, { signal: AbortSignal.timeout(12000), headers: { accept: 'application/json' } });
+      body = await res.json().catch(() => null);
+    }
   } catch {
-    throw new HttpError(502, 'Não consegui falar com o serviço de consulta de placa. Tente de novo em instantes.');
+    throw new HttpError(502, gratis ? 'O serviço gratuito de placa não respondeu. Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.' : 'Não consegui falar com o serviço de consulta de placa. Tente de novo em instantes.');
   }
   const msg = body && (body.mensagemRetorno || body.message || body.erro);
   const data = body && res.ok ? normalize(body, placa) : null;
   if (!data) {
+    if (gratis) throw new HttpError(404, 'O serviço gratuito não achou essa placa (ou está fora do ar). Use "Buscar valor na tabela FIPE" (marca > modelo > ano).');
     if (res && (res.status === 401 || res.status === 403)) throw new HttpError(502, 'O serviço recusou o token (inválido ou sem saldo). Confira PLACA_API_TOKEN.');
     throw new HttpError(404, msg && !/^ok$/i.test(String(msg)) ? `Consulta sem resultado: ${msg}` : 'Placa não encontrada.');
   }

@@ -37,6 +37,9 @@ function fromEnv(env = process.env) {
     // Consulta de placa + FIPE (serviço pago, ex.: apiplacas.com.br). Sem token, o botão de consulta fica desligado.
     placaToken: env.PLACA_API_TOKEN || '',
     placaUrl: env.PLACA_API_URL || 'https://wdapi2.com.br/consulta',
+    // Consulta por placa GRÁTIS (não oficial, sem token): usada quando não há PLACA_API_TOKEN. PLACA_FREE=false desliga.
+    placaFree: env.PLACA_FREE !== 'false',
+    placaFreeUrl: env.PLACA_FREE_URL || 'https://placa-fipe.apibrasil.com.br/placa/consulta',
     // Tabela FIPE gratuita (marca > modelo > ano). O token é opcional e gratuito (fipe.api.br): sobe o limite de 500 para 1.000 por dia.
     fipeUrl: env.FIPE_API_URL || 'https://fipe.parallelum.com.br/api/v2',
     fipeToken: env.FIPE_TOKEN || '',

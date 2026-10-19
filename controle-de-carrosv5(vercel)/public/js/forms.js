@@ -27,8 +27,8 @@ const F = {
     { k: 'dcompra', label: 'Data da compra (ou de quando o carro chegou)', t: 'date' },
     { k: 'dono', label: 'Carro de terceiro? Dono do carro', t: 'text', full: true, hint: 'Deixe vazio se o carro é nosso. Preenchido = consignado: ninguém paga pelo carro, ele só fica aqui para vender.' },
     { k: 'repasse', label: 'Repasse ao dono (valor mínimo)', t: 'money', full: true, showIf: isConsig, hint: 'Quanto precisa ir para o dono. Os gastos do carro saem do valor da venda e o que sobrar é a comissão.' },
-    { k: 'entT', label: 'Valor de entrada (total)', t: 'money', hint: 'Digite só o total. Por padrão cada sócio pagou metade.', showIf: notConsig },
-    { k: 'origemId', label: 'Veio de troca em qual carro nosso?', t: 'car', blank: 'Não veio de troca', full: true, hint: 'Se este carro entrou como pagamento de uma venda, escolha o carro vendido.', showIf: notConsig },
+    { k: 'entT', label: 'Valor de entrada (total)', t: 'money', hint: 'Digite só o total. Por padrão cada sócio pagou metade. Se o carro é de troca e fica com o dono do consignado: o valor em que ele entrou na troca.', showIf: (v) => notConsig(v) || !!v.origemId },
+    { k: 'origemId', label: 'Veio de troca em qual carro nosso?', t: 'car', blank: 'Não veio de troca', full: true, hint: 'Se este carro entrou como pagamento de uma venda, escolha o carro vendido. Para o carro de troca que fica com o dono de um consignado: preencha o mesmo Dono acima, deixe o repasse em branco e escolha aqui o carro consignado vendido.' },
     { k: 'ovrA', label: `Pago por ${names().A} (só se NÃO foi metade)`, t: 'money', showIf: notConsig },
     { k: 'ovrB', label: `Pago por ${names().B} (só se NÃO foi metade)`, t: 'money', showIf: notConsig },
     { note: 'entnote' },
@@ -212,7 +212,7 @@ export function openForm(mode, existing, opts = {}) {
         if (f.req && vis && (r.vals[f.k] == null || r.vals[f.k] === '')) { err = `Preencha "${f.label}".`; break; }
       }
     }
-    if (!err && mode === 'car' && r.vals.dono && r.vals.repasse == null) err = 'Informe o repasse ao dono (o valor mínimo que precisa ir para ele).';
+    if (!err && mode === 'car' && r.vals.dono && r.vals.repasse == null && !r.vals.origemId) err = 'Informe o repasse ao dono (o valor mínimo que precisa ir para ele).';
     if (!err && mode === 'car' && r.vals.status === 'Vendido' && r.vals.vvenda == null) err = 'Para marcar como vendido, informe o valor total da venda.';
     if (err) { $('#ferr').textContent = err; return; }
     // Campos escondidos (ex.: dados da venda de um carro que voltou para o estoque) não são enviados.

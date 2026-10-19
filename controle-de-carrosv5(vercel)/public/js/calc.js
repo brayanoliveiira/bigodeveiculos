@@ -55,7 +55,7 @@ var Calc = (function () {
     var out = {}, i, id;
     cars.filter(function (c) { return !c.deleted; }).forEach(function (c) {
       var cs = isConsig(c), e = cs ? { A: 0, B: 0 } : entry(c); // consignado: ninguém pagou pelo carro
-      out[c.id] = { c: c, consig: cs, repasse: cs ? N0(c.repasse) : 0, repPago: 0, repPagoA: 0, repPagoB: 0, repasses: [], entA: e.A, entB: e.B, gast: 0, gastA: 0, gastB: 0, prev: 0, troca: 0, kindA: 0, kindB: 0, trocaCars: [], rec: [] };
+      out[c.id] = { c: c, consig: cs, entregue: false, emEspecie: 0, repasse: cs ? N0(c.repasse) : 0, repPago: 0, repPagoA: 0, repPagoB: 0, repasses: [], entA: e.A, entB: e.B, gast: 0, gastA: 0, gastB: 0, prev: 0, troca: 0, kindA: 0, kindB: 0, trocaCars: [], rec: [] };
     });
     expenses.filter(function (x) { return !x.deleted; }).forEach(function (x) {
       var d = out[x.carId]; if (!d) return;
@@ -81,12 +81,18 @@ var Calc = (function () {
       if (o && out[o] && String(o) !== id) {
         out[o].troca += N0(out[id].c.entT); out[o].kindA += out[id].entA; out[o].kindB += out[id].entB;
         out[o].trocaCars.push(out[id].c.name);
+        // Carro consignado vendido com carro na troca, e o carro da troca fica com o dono: ele não é nosso (ninguém investiu nele)
+        // e o valor dele conta como repasse pago em carro. Vale quando o carro de troca tem o mesmo dono e nenhum repasse próprio.
+        var oc = out[o], tc = out[id];
+        if (oc.consig && tc.consig && !N0(tc.c.repasse) && String(oc.c.dono).trim().toLowerCase() === String(tc.c.dono).trim().toLowerCase()) {
+          tc.entregue = true; oc.emEspecie += N0(tc.c.entT);
+        }
       }
     }
     for (id in out) {
       var d = out[id], c = d.c;
       d.custo = d.entA + d.entB + d.repasse + d.gast; // consignado: o repasse ao dono é custo (sai da venda), mas ninguém o investiu
-      d.repFalta = d.consig ? r2(Math.max(0, d.repasse - d.repPago)) : 0;
+      d.repFalta = d.consig ? r2(Math.max(0, d.repasse - d.repPago - d.emEspecie)) : 0;
       var rr = splitOf(d.repFalta, null, c.quemrec);
       d.repA = d.repPagoA + rr[0]; d.repB = d.repPagoB + rr[1]; // quanto cada sócio terá pago ao dono quando tudo for repassado
       d.pmin = d.custo + d.prev;
@@ -194,6 +200,8 @@ var Calc = (function () {
         }
         if (d.perdeu !== null) s.perdeu += d.perdeu;
         if (d.dias !== null) { s.diasSum += d.dias; s.diasN++; }
+      } else if (d.entregue) {
+        return; // carro de troca que fica com o dono do carro consignado: não é estoque nosso
       } else {
         if (d.c.status === 'Reservado') s.reservados++; else s.estoque++;
         s.parado += d.invA + d.invB; s.prevPend += d.prev; if (d.consig) s.consigEstoque++;

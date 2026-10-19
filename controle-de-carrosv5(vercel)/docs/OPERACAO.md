@@ -67,6 +67,13 @@ valor FIPE, referência, nome e ano. Usa a API pública fipe.parallelum.com.br (
 Não existe API gratuita e legítima que descubra o carro **pela placa**: o Sinesp Cidadão foi encerrado e os sites de "placa FIPE"
 são formulários, não APIs. Por isso a consulta por placa abaixo é opcional e paga.
 
+## Consulta por placa grátis (sem token)
+Sem `PLACA_API_TOKEN`, o botão **Consultar placa e FIPE** usa um serviço gratuito e **não oficial**
+(`https://placa-fipe.apibrasil.com.br/placa/consulta`, o mesmo do repositório fraurino/consulta-placa-fipe): o servidor faz um POST com a placa
+e preenche modelo, ano, cor e valor FIPE. Por ser gratuito e sem garantia, pode ficar fora do ar, mudar de formato ou parar de responder;
+quando isso acontece o app avisa e você usa a busca marca > modelo > ano. `PLACA_FREE=false` desliga; `PLACA_FREE_URL` troca o endereço.
+Se `PLACA_API_TOKEN` existir, o serviço pago tem prioridade.
+
 ## Consulta de placa e FIPE (opcional, paga)
 No cadastro do carro, o botão **Consultar placa e FIPE** preenche modelo, ano, cor e valor FIPE a partir da placa.
 Não existe fonte pública e gratuita que ligue placa a dados do carro, então o app usa um serviço pago de terceiros
@@ -113,6 +120,12 @@ repasse + os gastos que vocês tiveram, e a **comissão** = valor da venda − r
 No cartão do carro, **Repasses** registra cada pagamento feito ao dono (data, valor, quem pagou) e mostra quanto ainda falta repassar.
 O Resumo avisa "A repassar a donos" e o relatório **Consignados** lista tudo. Para a comissão ficar só com um sócio, use divisão
 "Personalizado" com 100% para ele.
+
+### Consignado vendido com carro na troca
+Se o cliente paga com dinheiro + um carro e **o carro de troca fica com o dono** do consignado: cadastre o carro de troca com o **mesmo Dono**,
+**sem repasse**, em **Veio de troca em qual carro nosso?** escolha o consignado vendido e em **Valor de entrada** coloque o valor da troca.
+Esse carro não conta como estoque nem investimento de vocês; o valor dele abate o repasse ("Pago em carro") e o que falta repassar é só em dinheiro.
+A comissão continua sendo venda total − repasse − gastos. Se vocês ficarem com o carro de troca, cadastre-o normalmente (sem Dono).
 
 ## Pagamento parcial de parcela
 Em **Recebimentos**, **Receber** registra quanto o cliente pagou e em que dia (tudo ou parte). O que faltar continua em aberto e
