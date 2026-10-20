@@ -9,10 +9,13 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { entities } = require('./schema');
 
 // Colunas com letra maiúscula no código. O Postgres guarda tudo em minúsculas; aqui voltamos ao nome do código.
+// Os campos de server/schema.js entram sozinhos (coluna nova com maiúscula não pode ficar de fora: viria "jurosmes" em vez de "jurosMes").
 const CASE = Object.fromEntries(['carId', 'receiptId', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', 'entT', 'ovrA', 'ovrB',
-  'origemId', 'fipeRef', 'paidAt', 'userId', 'entityId'].map((k) => [k.toLowerCase(), k]));
+  'origemId', 'fipeRef', 'paidAt', 'userId', 'entityId',
+  ...Object.values(entities).flatMap((e) => Object.keys(e.fields))].filter((k) => k !== k.toLowerCase()).map((k) => [k.toLowerCase(), k]));
 
 const clean = (params) => params.map((p) => (p === undefined ? null : p));
 
@@ -142,4 +145,4 @@ async function migrate(db, dir) {
   });
 }
 
-module.exports = { open, migrate };
+module.exports = { open, migrate, CASE };

@@ -240,7 +240,7 @@ var Calc = (function () {
      'Parcelado': tabela Price com juros de taxaMes ao mês (sem juros: parcelas iguais); 1º vencimento em venc ou um mês depois.
      Devolve [{ label, tipo, due, valor }]. */
   /* Juros do mês a partir da % (0 a 1): em reais inteiros, arredondado para cima (3,3% de 33.333 = R$ 1.100). */
-  function jurosDaTaxa(valor, taxa) { var c = Math.round(N0(valor) * N0(taxa) * 100); return Math.ceil(c / 100 - 0.001); }
+  function jurosDaTaxa(valor, taxa) { var c = Math.round(N0(valor) * N0(taxa) * 100); return c > 0 ? Math.ceil(c / 100 - 0.001) : 0; }
   function loanPlan(l) {
     var v = N0(l.valor), out = [], i;
     if (v <= 0 || !l.data) return out;

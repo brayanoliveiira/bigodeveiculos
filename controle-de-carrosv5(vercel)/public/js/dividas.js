@@ -20,6 +20,7 @@ function condicao(l, g) {
   const tx = Calc.num(l.taxaMes);
   if (l.modo === 'Juros mensais') {
     const v = Calc.num(l.valor), j = Calc.num(l.jurosMes) != null ? Calc.num(l.jurosMes) : Calc.jurosDaTaxa(v, tx);
+    if (!(j > 0)) return `Juros não informado · devolve em ${dmy(l.venc)}`;
     return `Juros de ${brl(j)}/mês${v > 0 ? ` (${(j / v * 100).toFixed(1).replace('.', ',')}% a.m.)` : ''} · devolve em ${dmy(l.venc)}`;
   }
   const parc = g && g.itens.length ? g.itens.find((x) => x.tipo === 'Parcela') : null;

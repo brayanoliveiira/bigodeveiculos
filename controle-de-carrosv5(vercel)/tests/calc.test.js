@@ -234,5 +234,6 @@ test('juros a partir da %: reais inteiros, arredondado para cima', () => {
   assert.equal(C.jurosDaTaxa(33333, 0.033), 1100); // 1.099,99 -> 1.100
   assert.equal(C.jurosDaTaxa(20000, 0.0585), 1170);
   assert.equal(C.jurosDaTaxa(10001, 0.03), 301); // 300,03 -> 301
+  assert.ok(Object.is(C.jurosDaTaxa(57000, null), 0), 'sem % não vira -0 (aparecia "-R$ 0,00")');
   assert.equal(C.loanPlan({ valor: 10001, data: '2026-01-10', modo: 'Juros mensais', taxaMes: 0.03, venc: '2026-02-10' })[0].valor, 301);
 });
