@@ -78,7 +78,16 @@ function register(router, { db, cfg, limiter }) {
   });
 
   // ---- consulta de placa + FIPE (cobrada pelo provedor: só quem pode lançar dados) ----
-  router.add('GET', '/api/placa/:placa', { role: 'write' }, async (ctx) => await lookupPlaca({ db, cfg, user: ctx.user, placa: ctx.params.placa, fresh: ctx.query.get('fresh') === '1' }));
+  /** Consulta a placa e, se o provedor não trouxe FIPE, procura na tabela gratuita pela marca, modelo e ano (fipeFonte: 'modelo'). */
+  async function placaComFipe(ctx, placa, fresh) {
+    const d = await lookupPlaca({ db, cfg, user: ctx.user, placa, fresh });
+    if ((!d.fipe || !d.fipe.length) && d.marca && d.modelo) {
+      const alt = await fipe.adivinhar(db, cfg, { marca: d.marca, modelo: d.modelo, ano: d.ano }).catch(() => []);
+      if (alt.length) return { ...d, fipe: alt, fipeFonte: 'modelo' };
+    }
+    return d;
+  }
+  router.add('GET', '/api/placa/:placa', { role: 'write' }, async (ctx) => await placaComFipe(ctx, ctx.params.placa, ctx.query.get('fresh') === '1'));
 
   // ---- tabela FIPE gratuita: marca > modelo > ano (passa pelo servidor, com cache) ----
   const tipo = (ctx) => ctx.query.get('tipo') || 'cars';
@@ -179,8 +188,9 @@ function register(router, { db, cfg, limiter }) {
   async function autoFipe(ctx, item) {
     if (!item || !item.placa || (!cfg.placaToken && !cfg.placaSite && !cfg.placaFree && !(cfg.apibrasilBearer && cfg.apibrasilDevice))) return { item };
     try {
-      const d = await lookupPlaca({ db, cfg, user: ctx.user, placa: item.placa });
-      const o = d.fipe && d.fipe[0];
+      const d = await placaComFipe(ctx, item.placa, false);
+      // FIPE achada só pelo modelo: com mais de uma versão possível, não escolhe sozinho (a tela mostra as opções).
+      const o = d.fipe && (d.fipeFonte !== 'modelo' || d.fipe.length === 1) ? d.fipe[0] : null;
       const patch = {};
       if (o) { patch.fipe = o.valor; patch.fipeRef = [o.referencia, o.codigo && 'cód. ' + o.codigo].filter(Boolean).join(' · ') || null; }
       if (!item.cor && d.cor) patch.cor = d.cor;

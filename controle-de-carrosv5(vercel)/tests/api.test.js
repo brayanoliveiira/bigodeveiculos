@@ -279,6 +279,10 @@ test('fase 1: pátio sem data usa a compra, vendido vira Entregue, leilão/sinis
   // data informada é respeitada; local que não é o pátio não ganha data
   assert.equal((await adm('POST', '/api/cars', { name: 'A', dcompra: '2026-09-01', loc: 'Pátio / Loja', locdesde: '2026-09-05' })).json.item.locdesde, '2026-09-05');
   assert.equal((await adm('POST', '/api/cars', { name: 'B', dcompra: '2026-09-01', loc: 'Oficina mecânica' })).json.item.locdesde, null);
+  const of = (await adm('POST', '/api/cars', { name: 'D', loc: 'Oficina mecânica', locdet: 'Oficina do Zé' })).json.item;
+  assert.equal(of.locdet, 'Oficina do Zé');
+  const pat = (await adm('PATCH', `/api/cars/${of.id}`, { _action: 'move', loc: 'Pátio / Loja', locdet: 'Oficina do Zé', locprev: '2026-12-01' })).json.item;
+  assert.equal(pat.locdet, null); assert.equal(pat.locprev, null); // voltou ao pátio: sem oficina nem previsão de saída
   assert.equal((await adm('POST', '/api/cars', { name: 'C', sinistro: 'talvez' })).status, 400);
 
   const sold = await adm('PATCH', `/api/cars/${c.id}`, { status: 'Vendido', vvenda: 20000, dvenda: '2026-10-10', locdet: 'Oficina do Zé' });

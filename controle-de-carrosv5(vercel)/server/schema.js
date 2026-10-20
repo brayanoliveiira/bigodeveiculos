@@ -39,7 +39,7 @@ const entities = {
       repasse: { t: 'money', label: L('Repasse ao dono (valor mínimo)') },
       anun: { t: 'money', label: L('Preço de anúncio') },
       loc: { t: 'enum', values: lists.locs, label: L('Onde está agora') },
-      locdet: { t: 'text', max: 120, label: L('Qual oficina / funilaria') },
+      locdet: { t: 'text', max: 120, label: L('Local') },
       locdesde: { t: 'date', label: L('No local desde') },
       locprev: { t: 'date', label: L('Previsão de saída') },
       status: { t: 'enum', values: lists.status, req: true, default: 'Em estoque', label: L('Status') },
@@ -121,7 +121,7 @@ const entities = {
       nParc: { t: 'int', min: 1, max: 120, label: L('Número de parcelas') },
       venc: { t: 'date', label: L('Vencimento') },
       venc1: { t: 'date', label: L('1º vencimento dos juros') },
-      quitPrev: { t: 'date', label: L('Quitação prevista') },
+      quitPrev: { t: 'date', label: L('Quitação prevista') }, // fora da tela desde 20/10/2026; a coluna continua no banco
       quem: { t: 'partner', label: L('Quem paga') },
       obs: { t: 'text', max: 500, label: L('Finalidade') },
     },

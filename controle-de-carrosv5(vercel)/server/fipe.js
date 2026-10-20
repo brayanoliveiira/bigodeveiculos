@@ -83,4 +83,37 @@ async function preco(db, cfg, tipo, b, m, y) {
   return { valor, codigo: r.codeFipe || null, marca: r.brand || null, modelo: r.model || null, anoModelo: Number(r.modelYear) || null, combustivel: r.fuel || null, referencia: r.referenceMonth || null };
 }
 
-module.exports = { marcas, modelos, anos, preco };
+const simples = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const palavras = (x) => simples(x).split(/[^a-z0-9.]+/).filter(Boolean);
+
+/**
+ * Quando a consulta de placa não traz FIPE: procura na tabela gratuita pela marca, pelo modelo e pelo ano.
+ * Devolve até 5 versões no mesmo formato de `preco` (com `score`: quantas palavras do modelo bateram), da mais parecida para a menos.
+ * Cada passo fica no cache (fipe_cache), então repetir a mesma placa não gasta consultas.
+ */
+async function adivinhar(db, cfg, { marca, modelo, ano, tipo }) {
+  const t = tipoOk(tipo);
+  const alvo = simples(marca).replace(/^gm$/, 'chevrolet').replace(/^vw$/, 'volkswagen');
+  const ws = palavras(modelo).filter((w) => w.length >= 2);
+  if (!alvo || !ws.length) return [];
+  const b = (await marcas(db, cfg, t)).find((x) => palavras(x.name).includes(alvo) || simples(x.name) === alvo);
+  if (!b) return [];
+  const principal = ws.find((w) => w.length >= 3 && !/^\d/.test(w)) || ws[0]; // "kangoo", "onix", "gol"
+  const mods = (await modelos(db, cfg, t, b.code))
+    .map((m) => ({ ...m, score: palavras(m.name).filter((w) => ws.includes(w)).length }))
+    .filter((m) => palavras(m.name).includes(principal))
+    .sort((x, y) => y.score - x.score || x.name.length - y.name.length)
+    .slice(0, 15); // nem toda versão existe no ano procurado: olha várias (tudo vai para o cache)
+  const out = [];
+  for (const m of mods) {
+    let ys;
+    try { ys = await anos(db, cfg, t, b.code, m.code); } catch { continue; }
+    for (const y of ys.filter((y) => ano && String(y.code).startsWith(String(ano))).slice(0, 2)) {
+      try { out.push({ ...(await preco(db, cfg, t, b.code, m.code, y.code)), score: m.score }); } catch { /* sem preço nessa combinação */ }
+    }
+    if (out.length >= 5) break;
+  }
+  return out.slice(0, 5);
+}
+
+module.exports = { marcas, modelos, anos, preco, adivinhar };

@@ -148,3 +148,34 @@ test('site zapcarconsulta: salvar carro com placa preenche FIPE e referência', 
   assert.equal(je.item.fipe, 236560); assert.equal(je.item.ano, 2025); assert.equal(je.fipeAuto.ok, true);
   await a5.close();
 });
+
+test('provedor com marca errada e sem FIPE: conserta o nome e busca a FIPE pelo modelo e ano', async () => {
+  const junk = { tem_fipe: false, fipe: [], veiculo: { marca: 'T', modelo: 'RENAULT KANGOO SPW1616', submodelo: 'RENAULT', ano: '2008', ano_fabricacao: '2008', cor: 'Cinza', municipio: 'São Paulo', uf: 'SP' } };
+  const n = require('../server/placa').parseSite(junk, 'MFG9D44');
+  assert.equal(n.marca, 'Renault'); assert.equal(n.modelo, 'Kangoo'); assert.equal(n.nome, 'Renault Kangoo');
+  const FIPE = {
+    '/cars/brands': [{ code: '48', name: 'Renault' }, { code: '59', name: 'VW - VolksWagen' }],
+    '/cars/brands/48/models': [{ code: '1', name: 'Kangoo Express Hi-Flex 1.6 16V' }, { code: '2', name: 'Kangoo Authentique Hi-Flex 1.6 16V' }, { code: '3', name: 'Clio 1.0' }],
+    '/cars/brands/48/models/1/years': [{ code: '2008-5', name: '2008 Flex' }, { code: '2009-5', name: '2009 Flex' }],
+    '/cars/brands/48/models/2/years': [{ code: '2008-5', name: '2008 Flex' }],
+    '/cars/brands/48/models/1/years/2008-5': { price: 'R$ 22.992,00', codeFipe: '025133-0', brand: 'Renault', model: 'Kangoo Express Hi-Flex 1.6 16V', modelYear: 2008, fuel: 'Flex', referenceMonth: 'outubro de 2026' },
+    '/cars/brands/48/models/2/years/2008-5': { price: 'R$ 21.724,00', codeFipe: '025134-8', brand: 'Renault', model: 'Kangoo Authentique Hi-Flex 1.6 16V', modelYear: 2008, fuel: 'Flex', referenceMonth: 'outubro de 2026' },
+  };
+  const a6 = await createTestApp({ adminUser: 'x1234', adminPassword: 'senha-12345', adminName: 'X', placaSite: true, placaSiteUrl: 'https://site.test/api/fipe-placa', fipeUrl: 'https://fipe.test/api/v2',
+    fetch: async (url) => {
+      const u = String(url);
+      if (u.startsWith('https://site.test')) return { ok: true, status: 200, json: async () => junk };
+      const hit = FIPE[u.replace('https://fipe.test/api/v2', '')];
+      return hit ? { ok: true, status: 200, json: async () => hit } : { ok: false, status: 404, json: async () => null };
+    } });
+  const b6 = `http://127.0.0.1:${(await a6.listen()).port}`;
+  const r = await fetch(b6 + '/api/login', { method: 'POST', headers: H, body: JSON.stringify({ username: 'x1234', password: 'senha-12345' }) });
+  const ck = r.headers.get('set-cookie').split(';')[0];
+  const j = await (await fetch(b6 + '/api/placa/MFG9D44', { headers: { ...H, cookie: ck } })).json();
+  assert.equal(j.nome, 'Renault Kangoo'); assert.equal(j.fipeFonte, 'modelo');
+  assert.deepEqual(j.fipe.map((o) => o.valor).sort(), [21724, 22992]);
+  // salvar o carro: com duas versões possíveis, não escolhe a FIPE sozinho
+  const c = await (await fetch(b6 + '/api/cars', { method: 'POST', headers: { ...H, cookie: ck }, body: JSON.stringify({ name: 'Kangoo', placa: 'MFG9D44' }) })).json();
+  assert.equal(c.item.fipe, null); assert.equal(c.item.cor, 'Cinza');
+  await a6.close();
+});

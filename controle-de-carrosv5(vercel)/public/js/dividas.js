@@ -44,13 +44,6 @@ function trailHtml(l) {
   return h;
 }
 
-/** Data prevista de quitação: a informada no empréstimo ou, sem ela, a da última parcela. */
-function quitHtml(g) {
-  if (!g || !g.quitPrev) return '—';
-  if (g.quitado) return `<span class="mut">${dmy(g.quitPrev)}</span>`;
-  return `${g.quitAtrasada ? `<span class="pill late">${dmy(g.quitPrev)}</span>` : dmy(g.quitPrev)}<div class="mut small">${g.quitPrevManual ? 'prevista' : 'última parcela'}</div>`;
-}
-
 function situacaoPill(g) {
   if (!g || !g.n) return '<span class="pill soon">Sem parcelas</span>';
   if (g.quitado || g.falta <= 0.004) return '<span class="pill ok">Quitado</span>';
@@ -85,7 +78,7 @@ views.emprestimos = {
     let h = '<dl class="grid kpis" style="margin:0">' + K('Devemos em empréstimos', money(falta), '', true, `${esc(nm('A'))} ${brl(fA)}, ${esc(nm('B'))} ${brl(fB)}`) +
       K('Juros por mês', money(DV.jurosMes), '', false, `${brl(jurosPagos)} já pagos`) +
       K('Vencido', money(atras), atras > 0.004 ? 'neg' : '', false, atras > 0.004 ? 'pagar o quanto antes' : 'nada vencido') +
-      K('Próximo vencimento', prox ? dmy(prox) : '—', '', false, (() => { const q = aberto.map((l) => G(l) && G(l).quitPrev).filter(Boolean).sort().pop(); return q ? `última quitação ${dmy(q)}` : ''; })()) + '</dl>';
+      K('Próximo vencimento', prox ? dmy(prox) : '—') + '</dl>';
     const rows = all.filter((l) => f === 'Todos' || (f === 'Quitados') === !!(G(l) && G(l).quitado))
       .sort((a, b) => String((G(a) && G(a).prox) || '9').localeCompare(String((G(b) && G(b).prox) || '9')) || String(b.data).localeCompare(String(a.data)));
     h += table([
@@ -94,7 +87,6 @@ views.emprestimos = {
       { label: 'Carro / onde está', get: (l) => trailHtml(l) },
       { label: 'Falta', r: true, get: (l) => `<b>${brl(G(l) ? G(l).falta : 0)}</b><div class="mut small">pago ${brl(G(l) ? G(l).pago : 0)}</div>` },
       { label: 'Próximo', get: (l) => (G(l) && G(l).prox ? `${dmy(G(l).prox)}<div class="mut small">${brl(G(l).proxValor)}</div>` : '—') },
-      { label: 'Quitação prevista', get: (l) => quitHtml(G(l)) },
       { label: 'Situação', get: (l) => situacaoPill(G(l)) },
       { label: '', get: (l) => `<div class="row-acts"><button class="btn sm" data-act="dv-parc-loan" data-id="${l.id}">Parcelas</button>${S.canWrite ? `<button class="btn sm" data-act="dv-edit-loan" data-id="${l.id}">Editar</button><button class="btn sm" data-act="dv-del-loan" data-id="${l.id}">Excluir</button>` : ''}</div>` },
     ], rows, null, 'Nenhum empréstimo neste filtro.');
@@ -157,7 +149,7 @@ export function renderParcelas(owner) {
   const m = $('#modal');
   m.hidden = false;
   m.innerHTML = `<div class="sheet wide dv-sum"><h2>${title}</h2>` +
-    (isLoan ? `<p class="mut small" style="margin:0">${esc(condicao(l, g))}. Quem paga: ${esc(quemTxt(l.quem).toLowerCase())}.${g && g.quitPrev ? ` Quitação prevista: ${dmy(g.quitPrev)}${g.quitPrevManual ? '' : ' (última parcela)'}` : ''}</p>${l.obs ? `<p class="small" style="margin:0"><b>Finalidade:</b> ${esc(l.obs)}</p>` : ''}${l.carId != null ? `<div class="small">${trailHtml(l)}</div>` : ''}` : '') +
+    (isLoan ? `<p class="mut small" style="margin:0">${esc(condicao(l, g))}. Quem paga: ${esc(quemTxt(l.quem).toLowerCase())}.</p>${l.obs ? `<p class="small" style="margin:0"><b>Finalidade:</b> ${esc(l.obs)}</p>` : ''}${l.carId != null ? `<div class="small">${trailHtml(l)}</div>` : ''}` : '') +
     `<dl class="grid kpis" style="margin:0">${K('Total', brl(g ? g.total : 0))}${K('Pago', brl(g ? g.pago : 0))}${K('Falta', brl(g ? g.falta : 0), '', true)}${isLoan ? K('Juros total', brl(g ? g.juros : 0)) : ''}</dl>` +
     table([
       { label: 'Parcela', get: (p) => `<b>${esc(p.label || p.tipo || '—')}</b>${p.obs ? `<div class="mut small">${esc(p.obs)}</div>` : ''}` },

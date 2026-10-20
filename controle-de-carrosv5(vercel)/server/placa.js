@@ -9,6 +9,7 @@ const { HttpError } = require('./services');
 
 const PLACA_RE = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/; // AAA9999 (antiga) e AAA9A99 (Mercosul)
 const TTL_MS = 30 * 86400000;
+const CACHE_V = 2; // muda quando a leitura dos dados muda: consultas guardadas de versão antiga são refeitas (v2: marca/modelo consertados)
 const MAX_PER_HOUR = 30; // por usuário, só consultas que vão ao provedor
 
 const normalizePlate = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -28,10 +29,33 @@ function tidy(s, semPrefixo) {
   return t.replace(/[^\s/]+/g, (w) => (/\d/.test(w) || SIGLAS.has(w.toUpperCase()) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1).toLowerCase()));
 }
 
+// Montadoras conhecidas: quando o provedor manda a marca errada (ex.: "T", "I" de importado) e ela aparece no modelo.
+const MONTADORAS = ['ALFA ROMEO', 'LAND ROVER', 'MERCEDES-BENZ', 'MERCEDES', 'AUDI', 'BMW', 'BYD', 'CAOA', 'CHERY', 'CHEVROLET', 'CHEV', 'CITROEN', 'DODGE', 'FIAT', 'FORD', 'GM', 'GWM',
+  'HONDA', 'HYUNDAI', 'IVECO', 'JAC', 'JAGUAR', 'JEEP', 'KIA', 'LEXUS', 'LIFAN', 'MINI', 'MITSUBISHI', 'MMC', 'NISSAN', 'PEUGEOT', 'PORSCHE', 'RAM', 'RENAULT', 'SUBARU', 'SUZUKI',
+  'TOYOTA', 'TROLLER', 'VOLKSWAGEN', 'VOLVO', 'VW', 'YAMAHA'];
+const semAcento = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+/** Conserta marca/modelo mal preenchidos pelo provedor e tira códigos soltos do modelo ("RENAULT KANGOO SPW1616" com marca "T" -> Renault / Kangoo). */
+function arrumar(marcaRaw, modeloRaw, versaoRaw) {
+  let marca = String(marcaRaw || '').trim(), modelo = String(modeloRaw || '').trim(), versao = String(versaoRaw || '').trim();
+  modelo = modelo.replace(/^I\s*\//, '').replace(/^([A-Z]+)\//i, '$1 '); // "I/VW GOL" -> "VW GOL"; "VW/GOL" -> "VW GOL"
+  const APELIDO = { CHEV: 'CHEVROLET', GM: 'CHEVROLET', VW: 'VOLKSWAGEN', MMC: 'MITSUBISHI', MERCEDES: 'MERCEDES-BENZ' };
+  const canon = (x) => { const k = semAcento(x).split(' - ').pop(); return APELIDO[k] || k; };
+  const conhecida = (x) => MONTADORAS.some((m) => canon(x) === canon(m));
+  const naFrente = MONTADORAS.find((m) => semAcento(modelo) === m || semAcento(modelo).startsWith(m + ' '));
+  if (naFrente && (!conhecida(marca) || semAcento(marca).length <= 1)) { marca = modelo.slice(0, naFrente.length); modelo = modelo.slice(naFrente.length).trim(); }
+  else if (!conhecida(marca) && semAcento(marca).length <= 1 && conhecida(versao)) { marca = versao; versao = ''; }
+  else if (naFrente && canon(marca) === canon(naFrente)) modelo = modelo.slice(naFrente.length).trim(); // marca repetida no modelo ("CHEV ONIX" com marca Chevrolet)
+  // código solto (letras e números juntos, 6+ caracteres, ex.: SPW1616) não é nome de versão
+  modelo = modelo.split(/\s+/).filter((w) => !(/^(?=.*\d)(?=.*[A-Z])[A-Z0-9]{6,}$/i.test(w))).join(' ');
+  if (versao && canon(versao) === canon(marca)) versao = '';
+  return { marca, modelo, versao };
+}
+
 function normalize(raw, placa) {
-  const marca = tidy(raw.MARCA || raw.marca, true);
-  const modelo = tidy(raw.MODELO || raw.modelo);
-  const versao = tidy(raw.VERSAO || raw.SUBMODELO || '');
+  const fx = arrumar(raw.MARCA || raw.marca, raw.MODELO || raw.modelo, raw.VERSAO || raw.SUBMODELO || '');
+  const marca = tidy(fx.marca, true);
+  const modelo = tidy(fx.modelo);
+  const versao = tidy(fx.versao);
   if (!marca && !modelo) return null;
   const dados = Array.isArray(raw.fipe && raw.fipe.dados) ? raw.fipe.dados : [];
   const fipe = dados
@@ -107,7 +131,8 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   if (gratis && !cfg.placaFree) throw new HttpError(503, 'A consulta de placa ainda não foi ativada. Cadastre APIBRASIL_BEARER e APIBRASIL_DEVICE_TOKEN (veja docs/OPERACAO.md).');
   if (!fresh) {
     const c = await db.get('SELECT json, at FROM placa_cache WHERE placa = ?', placa);
-    if (c && Date.now() - Date.parse(c.at) < TTL_MS) return { ...JSON.parse(c.json), cache: true, consultadoEm: c.at };
+    const old = c ? JSON.parse(c.json) : null;
+    if (old && old.v === CACHE_V && Date.now() - Date.parse(c.at) < TTL_MS) { delete old.v; return { ...old, cache: true, consultadoEm: c.at }; }
   }
   throttle(user.id);
   let res, body;
@@ -146,8 +171,8 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
     throw new HttpError(404, msg && !/^ok$/i.test(String(msg)) ? `Consulta sem resultado: ${msg}` : 'Placa não encontrada.');
   }
   const at = new Date().toISOString();
-  await db.run('INSERT INTO placa_cache (placa, json, at) VALUES (?, ?, ?) ON CONFLICT(placa) DO UPDATE SET json = excluded.json, at = excluded.at', placa, JSON.stringify(data), at);
+  await db.run('INSERT INTO placa_cache (placa, json, at) VALUES (?, ?, ?) ON CONFLICT(placa) DO UPDATE SET json = excluded.json, at = excluded.at', placa, JSON.stringify({ ...data, v: CACHE_V }), at);
   return { ...data, cache: false, consultadoEm: at };
 }
 
-module.exports = { parseSite, lookup, normalize, normalizeApiBrasil, normalizePlate, parseBRL, PLACA_RE };
+module.exports = { arrumar, parseSite, lookup, normalize, normalizeApiBrasil, normalizePlate, parseBRL, PLACA_RE };

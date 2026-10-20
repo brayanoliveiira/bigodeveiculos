@@ -105,7 +105,7 @@ const round2 = (v) => Math.round(v * 100) / 100;
 /**
  * Regras automáticas de local do carro (mexem em `values`, que é o que será gravado):
  * vendido fica "Entregue" (sem oficina nem previsão de saída); voltou da venda para o estoque, sai de "Entregue";
- * no Pátio / Loja sem data de entrada, vale a data de compra.
+ * no Pátio / Loja sem data de entrada, vale a data de compra; no pátio (ou sem local) não há nome de oficina.
  */
 function carRules(values, merged, row) {
   if (merged.status === 'Vendido') {
@@ -118,6 +118,10 @@ function carRules(values, merged, row) {
   let loc = merged.loc, desde = merged.locdesde;
   if (loc === 'Entregue') { values.loc = loc = null; values.locdesde = desde = null; }
   if (loc === 'Pátio / Loja' && isBlank(desde) && !isBlank(merged.dcompra)) values.locdesde = merged.dcompra;
+  if (isBlank(loc) || loc === 'Pátio / Loja') { // nome do local e previsão de saída só fora do pátio
+    if (!isBlank(merged.locdet)) values.locdet = null;
+    if (!isBlank(merged.locprev)) values.locprev = null;
+  }
 }
 
 /** Quanto da parcela já foi pago. Parcela marcada "Recebido" sem nenhum pagamento lançado (jeito antigo) conta como paga por inteiro. */

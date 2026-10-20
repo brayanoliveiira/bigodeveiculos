@@ -106,7 +106,6 @@ views.resumo = {
     if (s.parcAtras) al.push(['vendas', `${brl(s.atrasado)} de clientes vencido`, true]);
     if (s.repFalta > 0.004) al.push(['carros', `${brl(s.repFalta)} para repassar aos donos de consignados`]);
     if (S.DV.atrasado > 0.004) al.push([Object.values(S.DV.porCar).some((g) => g.atrasado > 0.004) ? 'apagar' : 'emprestimos', `${brl(S.DV.atrasado)} a pagar vencido`, true]);
-    if (S.DV.quitAtrasadas) al.push(['emprestimos', `${S.DV.quitAtrasadas} ${S.DV.quitAtrasadas === 1 ? 'empréstimo passou' : 'empréstimos passaram'} da quitação prevista`, true]);
     if (s.prevAtrasados) al.push(['previstos', `${s.prevAtrasados} ${s.prevAtrasados === 1 ? 'gasto previsto atrasado' : 'gastos previstos atrasados'}`]);
     // Resumo: o painel escuro responde "como estamos?"; abaixo, o que precisa de atenção e os sócios. O detalhe fica no Gerencial.
     const soc = Reports.porSocio(S.D, S.expenses, '', '', J);

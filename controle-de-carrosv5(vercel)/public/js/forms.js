@@ -14,6 +14,10 @@ const isSold = (v) => v.status === 'Vendido';
 const isConsig = (v) => !!String(v.dono || '').trim();
 const notConsig = (v) => !isConsig(v);
 const notSold = (v) => !isSold(v);
+/** Nome do local e previsão de saída só fazem sentido fora do pátio (oficina, funilaria, despachante...). */
+const temLocal = (v) => !!v.loc && v.loc !== 'Pátio / Loja';
+/** "Quem pagou o carro" está em "Outra divisão" (mostra quanto cada sócio pagou). */
+const splitCustom = () => { const e = document.getElementById('cp_split'); return !!e && e.value === 'custom'; };
 const temHist = (v) => !!(v.leilao || v.sinistro);
 const isJurosMes = (v) => v.modo === 'Juros mensais';
 const isParcelado = (v) => v.modo === 'Parcelado';
@@ -34,19 +38,20 @@ const F = {
     { k: 'leilao', label: 'Veio de leilão', t: 'chk' }, { k: 'sinistro', label: 'Tem sinistro', t: 'chk' },
     { k: 'histObs', label: 'Observação de leilão / sinistro', t: 'text', full: true, showIf: temHist, hint: 'Ex.: leilão de financeira, batida leve na traseira, sem dano estrutural.' },
     { g: 'Compra' },
-    { k: 'dcompra', label: 'Data da compra (ou de quando o carro chegou)', t: 'date' },
+    { k: 'dcompra', label: 'Data da compra', t: 'date', hint: 'Ou de quando o carro chegou.' },
+    { k: 'entT', label: 'Valor da compra', t: 'money', hint: 'Quanto o carro custou. Carro de troca que fica com o dono do consignado: o valor em que entrou na troca.', showIf: (v) => notConsig(v) || !!v.origemId },
     { k: 'dono', label: 'Carro de terceiro? Dono do carro', t: 'text', full: true, hint: 'Deixe vazio se o carro é nosso. Preenchido = consignado: ninguém paga pelo carro, ele só fica aqui para vender.' },
     { k: 'repasse', label: 'Repasse ao dono (valor mínimo)', t: 'money', full: true, showIf: isConsig, hint: 'Quanto precisa ir para o dono. Os gastos do carro saem do valor da venda e o que sobrar é a comissão.' },
-    { k: 'entT', label: 'Valor de entrada (total)', t: 'money', hint: 'Digite só o total. Por padrão cada sócio pagou metade. Se o carro é de troca e fica com o dono do consignado: o valor em que ele entrou na troca.', showIf: (v) => notConsig(v) || !!v.origemId },
+    { split: true },
+    { k: 'ovrA', label: `Quanto ${names().A} pagou`, t: 'money', showIf: (v) => notConsig(v) && splitCustom() },
+    { k: 'ovrB', label: `Quanto ${names().B} pagou`, t: 'money', showIf: (v) => notConsig(v) && splitCustom() },
+    { compra: true },
     { k: 'origemId', label: 'Veio de troca em qual carro nosso?', t: 'car', blank: 'Não veio de troca', full: true, hint: 'Se este carro entrou como pagamento de uma venda, escolha o carro vendido. Para o carro de troca que fica com o dono de um consignado: preencha o mesmo Dono acima, deixe o repasse em branco e escolha aqui o carro consignado vendido.' },
-    { k: 'ovrA', label: `Pago por ${names().A} (só se NÃO foi metade)`, t: 'money', showIf: notConsig },
-    { k: 'ovrB', label: `Pago por ${names().B} (só se NÃO foi metade)`, t: 'money', showIf: notConsig },
-    { note: 'entnote' },
     { k: 'anun', label: 'Preço de anúncio', t: 'money' },
     { g: 'Onde está' },
     { k: 'loc', label: 'Onde está agora', t: 'sel', opts: locOpts, blank: 'Não informado', showIf: notSold },
-    { k: 'locdet', label: 'Qual oficina / funilaria', t: 'text', showIf: notSold },
-    { k: 'locdesde', label: 'No local desde', t: 'date', showIf: notSold, hint: 'No Pátio / Loja, vazio = data da compra.' }, { k: 'locprev', label: 'Previsão de saída', t: 'date', showIf: notSold },
+    { k: 'locdet', label: 'Local', t: 'text', showIf: (v) => notSold(v) && temLocal(v), hint: 'Ex.: Oficina do Zé, Funilaria Central.' },
+    { k: 'locdesde', label: 'No local desde', t: 'date', showIf: notSold, hint: 'No Pátio / Loja, vazio = data da compra.' }, { k: 'locprev', label: 'Previsão de saída', t: 'date', showIf: (v) => notSold(v) && temLocal(v) },
     { note: 'entregue', showIf: isSold },
     { k: 'status', label: 'Status', t: 'sel', opts: listOpts('status'), req: true },
     { g: 'Venda', showIf: isSold },
@@ -98,7 +103,6 @@ const F = {
     { k: 'nParc', label: 'Número de parcelas', t: 'int', showIf: isParcelado },
     { k: 'venc1', label: '1º vencimento dos juros', t: 'date', showIf: isJurosMes, hint: 'Os outros meses vencem no mesmo dia. Vazio = 1 mês depois do empréstimo.' },
     { k: 'venc', label: 'Vencimento', t: 'date', hint: 'Juros mensais: dia da devolução (valor + juros do mês). Parcelado: 1º vencimento (vazio = 1 mês depois).' },
-    { k: 'quitPrev', label: 'Quitação prevista', t: 'date', hint: 'Quando vocês pretendem quitar tudo (ex.: ao vender o carro). Vazio = data da última parcela.' },
     { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada (padrão)' },
     { k: 'obs', label: 'Finalidade (para que foi o dinheiro)', t: 'text', full: true, hint: 'Ex.: comprar a Kombi. Com o carro escolhido acima, o app acompanha as trocas: se a Kombi for vendida e entrar um Celta, o dinheiro passa a estar no Celta.' },
   ], defaults: () => ({ data: today(), modo: 'Juros mensais' }) },
@@ -112,8 +116,8 @@ const F = {
   ] },
   move: { col: 'cars', title: 'Mover carro', fields: () => [
     { k: 'loc', label: 'Onde está agora', t: 'sel', opts: locOpts, req: true, full: true },
-    { k: 'locdet', label: 'Qual oficina / funilaria', t: 'text', full: true },
-    { k: 'locdesde', label: 'No local desde', t: 'date' }, { k: 'locprev', label: 'Previsão de saída', t: 'date' },
+    { k: 'locdet', label: 'Local', t: 'text', full: true, showIf: temLocal, hint: 'Ex.: Oficina do Zé, Funilaria Central.' },
+    { k: 'locdesde', label: 'No local desde', t: 'date' }, { k: 'locprev', label: 'Previsão de saída', t: 'date', showIf: temLocal },
   ] },
 };
 
@@ -186,6 +190,8 @@ export function openForm(mode, existing, opts = {}) {
   let h = `<form class="sheet" id="form" novalidate><h2>${esc(opts.heading || def.heading || (existing ? (mode === 'move' ? 'Mover carro' : 'Editar ' + def.title) : 'Novo ' + def.title))}</h2><div class="fgrid">`;
   for (const f of def.fields()) {
     if (f.g) { h += `<div class="grp" data-g="${esc(f.g)}">${esc(f.g)}</div>`; continue; }
+    if (f.split) { h += splitHtml(init); continue; }
+    if (f.compra) { h += compraHtml(existing); continue; }
     if (f.lookup) {
       h += `<div class="field full plk"><div class="plk-row">${S.placa ? '<button type="button" class="btn" id="plbtn">Consultar placa e FIPE</button>' : ''}<button type="button" class="btn" id="fpbtn">Buscar valor na tabela FIPE (grátis)</button></div>` +
         `<div id="plres" aria-live="polite"></div>` +
@@ -196,7 +202,6 @@ export function openForm(mode, existing, opts = {}) {
       continue;
     }
     if (f.note === 'entregue') { h += '<div class="field full hint" data-k="_entregue">Carro vendido: o local passa a ser <b>Entregue</b>.</div>'; continue; }
-    if (f.note) { h += '<div class="field full hint" id="entnote"></div>'; continue; }
     if (f.t === 'chk') { h += `<div class="field chk" data-k="${f.k}"><label><input type="checkbox" id="f_${f.k}"${init[f.k] ? ' checked' : ''}> ${esc(f.label)}</label></div>`; continue; }
     h += `<div class="field${f.full ? ' full' : ''}" data-k="${f.k}"><label for="f_${f.k}">${esc(f.label)}${f.req ? ' *' : ''}</label>${control(f, init[f.k], selfId)}${f.hint ? `<span class="hint">${esc(f.hint)}</span>` : ''}</div>`;
   }
@@ -213,16 +218,7 @@ export function openForm(mode, existing, opts = {}) {
       const node = f.g ? $(`.grp[data-g="${f.g}"]`) : $(`.field[data-k="${f.k || '_' + f.note}"]`);
       if (node) node.hidden = !show;
     }
-    const en = $('#entnote');
-    if (en) {
-      let eT = parseMoney(cur.entT), oA = parseMoney(cur.ovrA), oB = parseMoney(cur.ovrB);
-      [eT, oA, oB] = [eT, oA, oB].map((x) => (Number.isNaN(x) ? null : x));
-      if (isConsig(cur)) en.textContent = '';
-      else if (eT != null || oA != null || oB != null) {
-        const e = Calc.entry({ entT: eT, ovrA: oA, ovrB: oB });
-        en.textContent = `Entrada de ${names().A}: ${brl(e.A)} · Entrada de ${names().B}: ${brl(e.B)}`;
-      } else en.textContent = '';
-    }
+    if (mode === 'car') compraRefresh(cur);
   };
   m.oninput = (ev) => {
     const el = ev.target;
@@ -279,18 +275,31 @@ export function openForm(mode, existing, opts = {}) {
     if (mode === 'receipt') { if (send.status === 'Pendente') send.paidAt = null; else if (!send.paidAt) send.paidAt = today(); }
     if (mode === 'payable') { if (send.status === 'Pendente') send.paidAt = null; else if (!send.paidAt) send.paidAt = today(); }
     if (mode === 'loan' && send.modo === 'Juros mensais' && send.jurosMes == null && send.taxaMes == null) { $('#ferr').textContent = 'Informe os juros por mês, em R$ ou em %.'; return; }
+    if (mode === 'car' && !isConsig(r.vals)) {
+      if (!splitCustom()) { send.ovrA = null; send.ovrB = null; } // metade cada
+      else {
+        // vazio vale zero; com prazo, cada um fica com o que pagou na hora + a parte dele no restante
+        const d = divisaoCompra(), total = numDe('f_entT') || 0, modo = $('#cp_modo') ? $('#cp_modo').value : '';
+        if (!modo && Math.abs(d.pagoA + d.pagoB - total) > 0.004) { $('#ferr').textContent = `A soma do que ${names().A} e ${names().B} pagaram (${brl(d.pagoA + d.pagoB)}) precisa ser igual ao valor da compra (${brl(total)}).`; return; }
+        send.ovrA = d.A; send.ovrB = d.B;
+      }
+    }
+    const compra = mode === 'car' && !isConsig(r.vals) ? compraParts() : null;
+    if (compra && compra.err) { $('#ferr').textContent = compra.err; return; }
     if (opts.extra) Object.assign(send, opts.extra);
     saving = true; $('#fsave').disabled = true;
     try {
       if (!existing) {
         const res = await api('POST', '/api/' + def.col, send);
-        toast('Salvo.');
+        if (compra) await api('POST', '/api/payables/plan', { carId: res.item.id, parts: compra.parts });
+        toast(compra ? 'Salvo. O pagamento do carro foi para Veículos a pagar.' : 'Salvo.');
         await hooks.reload();
         if (opts.afterSave) opts.afterSave(res.item);
       } else {
         const body = mode === 'move' ? { _action: 'move', ...send } : send;
         const res = await api('PATCH', `/api/${def.col}/${existing.id}`, body);
-        toast(res.changed ? 'Alteração salva.' : 'Nada mudou.');
+        if (compra) await api('POST', '/api/payables/plan', { carId: existing.id, parts: compra.parts });
+        toast(compra ? 'Salvo. O pagamento do carro foi para Veículos a pagar.' : res.changed ? 'Alteração salva.' : 'Nada mudou.');
         await hooks.reload();
       }
       closeModal();
@@ -300,6 +309,132 @@ export function openForm(mode, existing, opts = {}) {
       saving = false; $('#fsave').disabled = false;
     }
   };
+}
+
+/* ---------- compra a prazo (dentro do cadastro do carro) ---------- */
+const CP_PRAZOS = [30, 45, 60, 90];
+const CP_PARCELAS = [2, 3, 4, 5, 6, 8, 10, 12];
+/** "Quem pagou o carro": metade cada (padrão) ou outra divisão, que mostra quanto cada sócio pagou. */
+function splitHtml(init) {
+  const custom = Calc.num(init.ovrA) != null || Calc.num(init.ovrB) != null;
+  return `<div class="field" id="cp_splitf"><label for="cp_split">Quem pagou o carro</label><select id="cp_split"><option value="">Metade cada</option><option value="custom"${custom ? ' selected' : ''}>Outra divisão</option></select></div>`;
+}
+/** "Como vamos pagar": à vista, a prazo ou parcelado, no mesmo fluxo da compra. Carro que já tem pagamento programado só mostra o atalho. */
+function compraHtml(existing) {
+  const tem = existing && (S.payables || []).some((p) => !p.deleted && p.carId === existing.id && p.origem === 'Carro');
+  const resumo = '<div class="field full cp-prev" id="cp_prev"></div>';
+  if (tem) return `<div class="field" data-cpbox><label>Como vamos pagar</label><span class="hint">Já tem pagamento programado. <button type="button" class="linkbtn" data-act="dv-parc-car" data-id="${existing.id}">Ver os pagamentos</button></span></div>${resumo}`;
+  const opt = (arr, fmt, sel) => arr.map((x) => `<option value="${esc(x)}"${String(x) === String(sel) ? ' selected' : ''}>${esc(fmt(x))}</option>`).join('');
+  return `<div class="field" data-cpbox><label for="cp_modo">Como vamos pagar</label><select id="cp_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option></select></div>
+    <div class="field" data-cp="prazo parcelado"><label for="cp_ent">Pago na hora</label><input type="text" id="cp_ent" inputmode="decimal" data-money placeholder="R$ 0,00"><span class="hint">Vazio se não pagamos nada na compra.</span></div>
+    <div class="field" data-cp="prazo"><label for="cp_prazo">Prazo do restante</label><select id="cp_prazo">${opt(CP_PRAZOS, (x) => x + ' dias', 30)}<option value="data">Data específica</option></select></div>
+    <div class="field" data-cp="prazo-data"><label for="cp_data">Data do pagamento</label><input type="date" id="cp_data"></div>
+    <div class="field" data-cp="parcelado"><label for="cp_n">Parcelas do restante</label><select id="cp_n">${opt(CP_PARCELAS, (x) => x + 'x', 2)}</select></div>
+    <div class="field" data-cp="parcelado"><label for="cp_first">1º vencimento</label><input type="date" id="cp_first"><span class="hint">Vazio: 1 mês depois da compra.</span></div>
+    <div class="field" data-cp="prazo parcelado"><label for="cp_credor">A quem vamos pagar</label><input type="text" id="cp_credor" placeholder="Ex.: João, antigo dono" autocomplete="off"></div>
+    <div class="field" data-cp="prazo parcelado custom"><label for="cp_quemrest">Quem paga o restante</label><select id="cp_quemrest"><option value="">Os dois (metade cada)</option><option value="A">Só ${esc(names().A)}</option><option value="B">Só ${esc(names().B)}</option><option value="custom">Outra divisão</option></select></div>
+    <div class="field row-start" data-cp="prazo parcelado custom restcustom"><label for="cp_restA">Quanto ${esc(names().A)} paga do restante</label><input type="text" id="cp_restA" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-cp="prazo parcelado custom restcustom"><label for="cp_restB">Quanto ${esc(names().B)} paga do restante</label><input type="text" id="cp_restB" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field row-start" data-cp="prazo parcelado"><label for="cp_forma">Forma de pagamento</label><select id="cp_forma"><option value="">Não informada</option>${opt(LISTS.formasPag || [], (x) => x, 'Pix')}</select></div>
+    ${resumo}`;
+}
+/** Divisão do carro entre os sócios, como o cálculo usa (metade cada ou os valores informados). */
+const numDe = (id) => { const v = parseMoney(($('#' + id) || {}).value); return v == null || Number.isNaN(v) ? null : v; };
+/**
+ * Divisão do carro entre os sócios. Metade cada: cálculo padrão. Outra divisão: vazio vale zero e os valores são o que cada um
+ * pagou na hora; com prazo, o restante entra na conta de quem vai pagá-lo ("Quem paga o restante"), e a soma fecha com o valor da compra.
+ */
+function divisaoCompra() {
+  const total = numDe('f_entT') || 0;
+  if (!splitCustom()) return { ...Calc.entry({ entT: total }), pagoA: null, pagoB: null, rest: 0 };
+  const pagoA = numDe('f_ovrA') || 0, pagoB = numDe('f_ovrB') || 0;
+  const modo = $('#cp_modo') ? $('#cp_modo').value : '';
+  const rest = modo ? round2(Math.max(0, total - pagoA - pagoB)) : 0;
+  const q = $('#cp_quemrest') ? $('#cp_quemrest').value : '';
+  const rA = q === 'A' ? rest : q === 'B' ? 0 : q === 'custom' ? (numDe('cp_restA') || 0) : round2(rest / 2);
+  const rB = q === 'custom' ? (numDe('cp_restB') || 0) : round2(rest - rA);
+  return { A: round2(pagoA + rA), B: round2(pagoB + rB), pagoA, pagoB, rest, restA: rA, restB: rB };
+}
+/** Pagamentos da compra: null = à vista; { err } = falta informação; { parts, ent } = o que vai para Veículos a pagar. */
+function compraParts() {
+  const modo = $('#cp_modo') ? $('#cp_modo').value : '';
+  if (!modo) return null;
+  const total = numDe('f_entT'), base = $('#f_dcompra').value || today();
+  if (!(total > 0)) return { err: 'Informe o valor da compra para programar o pagamento.' };
+  const custom = splitCustom(), e = divisaoCompra();
+  const ent = custom ? round2(e.pagoA + e.pagoB) : (numDe('cp_ent') || 0);
+  if (ent >= total) return { err: custom ? 'O que os dois pagaram na hora já cobre o valor da compra. Escolha "À vista".' : 'O pago na hora já cobre o valor da compra. Escolha "À vista".' };
+  let dias = 0;
+  const dataFixa = modo === 'prazo' && $('#cp_prazo').value === 'data';
+  if (modo === 'prazo') {
+    if (dataFixa) {
+      const d = $('#cp_data').value;
+      if (!d) return { err: 'Informe a data do pagamento.' };
+      dias = Calc.diff(d, base);
+      if (dias < 0) return { err: 'A data do pagamento é antes da data da compra.' };
+    } else dias = Number($('#cp_prazo').value);
+  }
+  const quemRest = custom ? ($('#cp_quemrest').value || null) : null;
+  if (quemRest === 'custom' && Math.abs(e.restA + e.restB - e.rest) > 0.004) return { err: `O restante é ${brl(e.rest)}, mas ${names().A} e ${names().B} somam ${brl(e.restA + e.restB)}.` };
+  const extra = { credor: $('#cp_credor').value.trim() || null, forma: $('#cp_forma').value || null };
+  const rows = Calc.plan({ total, base, mode: modo, entrada: ent, prazoDias: dias, n: Number($('#cp_n').value), primeiro: $('#cp_first').value || null });
+  const parts = [];
+  for (const p of rows) {
+    if (p.label === 'Entrada') {
+      // O que foi pago na compra, separado por sócio quando a divisão não é metade cada.
+      const pagos = custom ? [['A', e.pagoA], ['B', e.pagoB]].filter(([, v]) => v > 0) : [[null, p.valor]];
+      for (const [q, v] of pagos) parts.push({ label: q ? `Pago na compra (${names()[q]})` : 'Pago na compra', tipo: 'Entrada', due: p.due, valor: round2(v), status: 'Pago', paidAt: p.paidAt, quem: q, ...extra });
+    } else if (quemRest === 'custom') {
+      // cada parcela do restante vira uma conta por sócio, na proporção que cada um assumiu
+      const vA = e.rest > 0 ? round2(p.valor * e.restA / e.rest) : 0, base0 = dataFixa ? 'Pagamento' : p.label;
+      for (const [q, v] of [['A', vA], ['B', round2(p.valor - vA)]]) if (v > 0) parts.push({ label: `${base0} (${names()[q]})`, tipo: 'Parcela', due: p.due, valor: v, status: 'Pendente', paidAt: null, quem: q, ...extra });
+    } else parts.push({ label: dataFixa ? 'Pagamento' : p.label, tipo: 'Parcela', due: p.due, valor: p.valor, status: 'Pendente', paidAt: null, quem: quemRest, ...extra });
+  }
+  return { ent, parts };
+}
+/** Mostra só os campos da forma escolhida e escreve o resumo da compra numa frase. */
+function compraRefresh(cur) {
+  const consig = isConsig(cur), custom = splitCustom();
+  const sf = $('#cp_splitf');
+  if (sf) sf.hidden = consig;
+  document.querySelectorAll('[data-cpbox]').forEach((el) => { el.hidden = consig; el.classList.toggle('row-start', custom); });
+  const oa = document.querySelector('.field[data-k="ovrA"]');
+  if (oa) oa.classList.add('row-start'); // os valores dos dois sócios ficam lado a lado
+  const sel = $('#cp_modo'), modo = sel ? sel.value : '';
+  const dataFixa = modo === 'prazo' && $('#cp_prazo') && $('#cp_prazo').value === 'data';
+  document.querySelectorAll('[data-cp]').forEach((el) => {
+    const t = el.dataset.cp.split(' ');
+    const restCustom = $('#cp_quemrest') && $('#cp_quemrest').value === 'custom';
+    el.hidden = consig || !(t.includes(modo) || (dataFixa && t.includes('prazo-data'))) || (t.includes('custom') && !custom) || (t.includes('restcustom') && !restCustom);
+  });
+  // Outra divisão: "Pago na hora" é a soma do que cada sócio pagou (só leitura).
+  const ent = $('#cp_ent');
+  if (ent) {
+    ent.readOnly = custom;
+    const hint = ent.parentElement.querySelector('.hint');
+    if (custom) { const d = divisaoCompra(); ent.value = moneyField(round2(d.pagoA + d.pagoB)); if (hint) hint.textContent = `Soma do que ${names().A} e ${names().B} pagaram.`; }
+    else if (hint) hint.textContent = 'Vazio se não pagamos nada na compra.';
+  }
+  const lA = $('label[for="f_ovrA"]'), lB = $('label[for="f_ovrB"]');
+  if (lA) lA.textContent = modo ? `Quanto ${names().A} pagou na hora` : `Quanto ${names().A} pagou`;
+  if (lB) lB.textContent = modo ? `Quanto ${names().B} pagou na hora` : `Quanto ${names().B} pagou`;
+  const prev = $('#cp_prev');
+  if (!prev) return;
+  prev.hidden = consig;
+  const total = numDe('f_entT');
+  if (consig || !(total > 0)) { prev.textContent = ''; return; }
+  const e = divisaoCompra();
+  let t = `${esc(names().A)} entra com <b>${brl(e.A)}</b> e ${esc(names().B)} com <b>${brl(e.B)}</b>.`;
+  if (custom && !modo && Math.abs(e.pagoA + e.pagoB - total) > 0.004) t += ` <span class="neg">A soma (${brl(e.pagoA + e.pagoB)}) não bate com o valor da compra (${brl(total)}).</span>`;
+  const c = modo ? compraParts() : null;
+  if (c && c.err) t += ` <span class="mut">${esc(c.err)}</span>`;
+  else if (c) {
+    const porData = {};
+    c.parts.filter((p) => p.status !== 'Pago').forEach((p) => { porData[p.due] = round2((porData[p.due] || 0) + p.valor); }); // uma data, um valor (mesmo dividido entre os sócios)
+    const falta = Object.keys(porData).sort().map((d) => `<b>${brl(porData[d])}</b> em ${dmy(d)}`);
+    t += ` ${c.ent > 0 ? `Na compra pagamos <b>${brl(c.ent)}</b> e fica a pagar` : 'Fica a pagar'} ${falta.join(', ')}.`;
+  }
+  prev.innerHTML = t;
 }
 
 const putField = (k, v, onlyEmpty) => {
@@ -332,7 +467,7 @@ function wirePlateLookup(refresh) {
     const sub = [d.ano, d.cor, [d.municipio, d.uf].filter(Boolean).join('/'), d.situacao].filter(Boolean).map(esc).join(' · ');
     const opts = d.fipe.map((o, i) => `<option value="${i}">${esc(brl(o.valor))} — ${esc(o.modelo || '')}${o.anoModelo ? ' ' + o.anoModelo : ''}</option>`).join('');
     out.innerHTML = `<div class="plres"><b>${esc(d.nome)}</b><span class="mut small">${sub}</span>` +
-      (d.fipe.length ? `<label class="small" for="plfipe">Valor FIPE${d.fipe.length > 1 ? ' (há mais de uma versão parecida, escolha a certa)' : ''}</label><select id="plfipe">${opts}</select>`
+      (d.fipe.length ? `<label class="small" for="plfipe">${d.fipeFonte === 'modelo' ? 'A placa não trouxe a FIPE. Valores da tabela FIPE para esse modelo e ano' : 'Valor FIPE'}${d.fipe.length > 1 ? ' (escolha a versão certa)' : ''}</label><select id="plfipe">${opts}</select>`
         : '<span class="small">A consulta não trouxe valor FIPE para esta placa. Use a busca na tabela FIPE ou digite à mão.</span>') +
       `<span class="mut small">${d.cache ? 'Consulta guardada de ' + esc(stamp(d.consultadoEm)) : 'Consulta feita agora'} · <button type="button" class="linkbtn" id="plagain">consultar de novo</button></span></div>`;
     const sel = $('#plfipe');
