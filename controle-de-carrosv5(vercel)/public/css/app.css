@@ -166,6 +166,7 @@ svg.chart line{stroke:var(--line)}
 .field label{font-size:13px;font-weight:600}
 .field .hint{font-size:12px;color:var(--ink2)}
 .field.chk{justify-content:flex-end} .field.chk label{display:flex;gap:8px;align-items:center;font-weight:500;min-height:38px;cursor:pointer} .field.chk input{width:18px;height:18px;margin:0}
+.row-acts{display:flex;gap:6px;flex-wrap:nowrap;justify-content:flex-end} button.pill{cursor:pointer;font-family:inherit}
 .mgrp{margin:0 0 18px} .mgrp-h{font-size:17px;margin:0 0 8px;display:flex;gap:8px;align-items:baseline}
 .grp{grid-column:1/-1;font-family:var(--f-d);font-size:14px;font-weight:700;border-bottom:1px solid var(--line);padding-top:8px;padding-bottom:3px}
 .acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}

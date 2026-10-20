@@ -107,6 +107,44 @@ const entities = {
     },
     labelOf: async (r, db) => `Repasse de ${BRL.format(r.valor)} ao dono — ${await carName(db, r.carId)}`,
   },
+  loans: {
+    table: 'loans',
+    kind: 'loan',
+    fields: {
+      credor: { t: 'text', req: true, max: 80, label: L('De quem pegamos') },
+      data: { t: 'date', req: true, label: L('Data do empréstimo') },
+      valor: { t: 'money', req: true, label: L('Valor emprestado') },
+      carId: { t: 'ref', ref: 'cars', label: L('Carro comprado com o dinheiro') },
+      modo: { t: 'enum', values: lists.loanModes, req: true, label: L('Como vamos pagar') },
+      jurosMes: { t: 'money', label: L('Juros por mês (R$)') },
+      taxaMes: { t: 'pct', label: L('Juros por mês (%)') },
+      nParc: { t: 'int', min: 1, max: 120, label: L('Número de parcelas') },
+      venc: { t: 'date', label: L('Vencimento') },
+      quem: { t: 'partner', label: L('Quem paga') },
+      obs: { t: 'text', max: 500, label: L('Finalidade') },
+    },
+    labelOf: (r) => `Empréstimo de ${BRL.format(r.valor)} — ${r.credor}`,
+  },
+  payables: {
+    table: 'payables',
+    kind: 'payable',
+    fields: {
+      origem: { t: 'enum', values: lists.origens, req: true, label: L('Origem') },
+      carId: { t: 'ref', ref: 'cars', label: L('Carro') },
+      loanId: { t: 'ref', ref: 'loans', refName: 'Empréstimo', label: L('Empréstimo') },
+      credor: { t: 'text', max: 80, label: L('A quem pagamos') },
+      label: { t: 'text', max: 40, label: L('Parcela') },
+      tipo: { t: 'enum', values: lists.ptipos, label: L('Tipo') },
+      due: { t: 'date', req: true, label: L('Vencimento') },
+      valor: { t: 'money', req: true, label: L('Valor') },
+      forma: { t: 'enum', values: lists.formasPag, label: L('Forma de pagamento') },
+      quem: { t: 'partner', label: L('Quem paga') },
+      status: { t: 'enum', values: lists.paystatus, req: true, default: 'Pendente', label: L('Situação') },
+      paidAt: { t: 'date', label: L('Pago em') },
+      obs: { t: 'text', max: 300, label: L('Observação') },
+    },
+    labelOf: async (r, db) => `${r.label || r.tipo || 'Conta'} — ${r.loanId ? await loanName(db, r.loanId) : await carName(db, r.carId)}`,
+  },
   planned: {
     table: 'planned',
     kind: 'planned',
@@ -126,6 +164,11 @@ const entities = {
 async function carName(db, id) {
   const r = id == null ? null : await db.get('SELECT name FROM cars WHERE id = ?', id);
   return r ? r.name : '—';
+}
+
+async function loanName(db, id) {
+  const r = id == null ? null : await db.get('SELECT credor, valor FROM loans WHERE id = ?', id);
+  return r ? `Empréstimo ${r.credor} (${BRL.format(r.valor)})` : '—';
 }
 
 async function receiptName(db, id) {
@@ -226,7 +269,7 @@ async function fmtValue(db, f, v, partners) {
     case 'date': return String(v).split('-').reverse().join('/');
     case 'partner': return partners[v] || v;
     case 'bool': return v ? 'Sim' : 'Não';
-    case 'ref': return f.ref === 'receipts' ? await receiptName(db, v) : await carName(db, v);
+    case 'ref': return f.ref === 'receipts' ? await receiptName(db, v) : f.ref === 'loans' ? await loanName(db, v) : await carName(db, v);
     default: return String(v);
   }
 }

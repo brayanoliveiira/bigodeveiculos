@@ -4,7 +4,7 @@ export const LISTS = { locs: [], cats: [], status: [], pstatus: [], rstatus: [],
 export const S = {
   me: null,           // { id, username, name, role }
   canWrite: false,
-  cars: [], expenses: [], planned: [], receipts: [], payments: [], repasses: [], audit: [],
+  cars: [], expenses: [], planned: [], receipts: [], payments: [], repasses: [], loans: [], payables: [], audit: [],
   settings: { meta: 0.1, alerta: 45, partners: { A: 'Sócio 1', B: 'Sócio 2' } },
   version: 0,
   loaded: false, auditLoaded: false,
@@ -12,12 +12,14 @@ export const S = {
   year: new Date().getFullYear(),
   ui: { q: '', st: 'Todos', gcar: '', gquem: '', pcar: '', pst: '', hu: '', he: '', open: {}, vf: 'Todas', rep: 'geral', per: 'ano', from: '', to: '', rcCar: null, repCar: null, byMarca: (() => { try { return !!localStorage.getItem('bc.byMarca'); } catch { return false; } })() },
   D: {},
+  loanHold: {},
+  DV: { porLoan: {}, porCar: {}, total: 0, A: 0, B: 0, atrasado: 0, jurosMes: 0 },
   users: [],
 };
 
 export const names = () => S.settings.partners;
 export const itemOf = (kind, id) => {
-  const arr = kind === 'car' ? S.cars : kind === 'expense' ? S.expenses : kind === 'planned' ? S.planned : kind === 'receipt' ? S.receipts : kind === 'payment' ? S.payments : kind === 'repasse' ? S.repasses : [];
+  const arr = kind === 'car' ? S.cars : kind === 'expense' ? S.expenses : kind === 'planned' ? S.planned : kind === 'receipt' ? S.receipts : kind === 'payment' ? S.payments : kind === 'repasse' ? S.repasses : kind === 'loan' ? S.loans : kind === 'payable' ? S.payables : [];
   return arr.find((x) => x.id === Number(id));
 };
 export const carName = (id) => { const c = S.cars.find((x) => x.id === id); return c ? c.name : '—'; };

@@ -5,16 +5,26 @@ import { S, LISTS, names, itemOf } from './state.js';
 import { openForm, openPlanForm, confirmBox, closeModal, setHooks } from './forms.js';
 import { views, ROLE_NAME } from './views.js';
 import { renderReceipts, renderRepasses } from './vendas.js';
+import { renderParcelas } from './dividas.js';
 import { exportCsv } from './gerencial.js';
 
-const TABS = [['resumo', 'Resumo'], ['carros', 'Carros'], ['onde', 'Onde estão'], ['vendas', 'Vendas'], ['gastos', 'Gastos'], ['previstos', 'Previstos'], ['gerencial', 'Gerencial'], ['historico', 'Histórico'], ['ajustes', 'Ajustes']];
+const TABS = [['resumo', 'Resumo'], ['carros', 'Carros'], ['onde', 'Onde estão'], ['vendas', 'Vendas'], ['apagar', 'Veículos a pagar'], ['emprestimos', 'Empréstimos'], ['gastos', 'Gastos'], ['previstos', 'Previstos'], ['gerencial', 'Gerencial'], ['historico', 'Histórico'], ['ajustes', 'Ajustes']];
 const POLL_MS = 5000;
 let pollTimer = null;
 
 const banner = (msg, bad) => { $('#banner').innerHTML = msg ? `<div class="banner${bad ? ' bad' : ''}">${esc(msg)}</div>` : ''; };
 
 /* ---------- dados ---------- */
-function recompute() { S.D = Calc.compute(S.cars, S.expenses, S.planned, S.settings, today(), S.receipts, S.payments, S.repasses); }
+function recompute() {
+  S.D = Calc.compute(S.cars, S.expenses, S.planned, S.settings, today(), S.receipts, S.payments, S.repasses);
+  S.DV = Calc.debts(S.payables, S.loans, S.cars, today());
+  // Carros que hoje "carregam" dinheiro de empréstimo ainda não quitado (segue as trocas a partir do carro comprado).
+  S.loanHold = {};
+  (S.loans || []).filter((l) => !l.deleted && l.carId != null && !(S.DV.porLoan[l.id] && S.DV.porLoan[l.id].quitado)).forEach((l) => {
+    const t = Calc.loanTrail(l.carId, S.cars, (c) => !!(S.D[c.id] && S.D[c.id].entregue));
+    if (t) t.holders.forEach((c) => { (S.loanHold[c.id] = S.loanHold[c.id] || []).push(l); });
+  });
+}
 
 async function loadAudit() {
   const r = await api('GET', '/api/audit?limit=500');
@@ -28,13 +38,14 @@ async function loadUsers() {
 /** Busca tudo de novo no servidor e redesenha a aba atual (sem apagar o que a pessoa está digitando). */
 async function reload() {
   const d = await api('GET', '/api/data');
-  S.cars = d.cars; S.expenses = d.expenses; S.planned = d.planned; S.receipts = d.receipts; S.payments = d.payments || []; S.repasses = d.repasses || []; S.settings = d.settings; S.version = d.version; S.loaded = true;
+  S.cars = d.cars; S.expenses = d.expenses; S.planned = d.planned; S.receipts = d.receipts; S.payments = d.payments || []; S.repasses = d.repasses || []; S.loans = d.loans || []; S.payables = d.payables || []; S.settings = d.settings; S.version = d.version; S.loaded = true;
   if (S.tab === 'historico') await loadAudit();
   if (S.tab === 'ajustes') await loadUsers();
   recompute();
   views[S.tab].paint();
   if (S.ui.rcCar && $('#modal').querySelector('.rc-sum')) renderReceipts(S.ui.rcCar); // janela de recebimentos aberta: atualiza
   if (S.ui.repCar && $('#modal').querySelector('.rp-sum')) renderRepasses(S.ui.repCar);
+  if (S.ui.dvOwner && $('#modal').querySelector('.dv-sum')) renderParcelas(S.ui.dvOwner);
 }
 setHooks({ reload });
 
@@ -129,7 +140,7 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('#m
 async function run(fn, okMsg) {
   try { const r = await fn(); await reload(); if (okMsg) toast(okMsg); return r; } catch (e) { toast(e.message); return null; }
 }
-const COLL = { car: 'cars', expense: 'expenses', planned: 'planned', receipt: 'receipts', payment: 'payments', repasse: 'repasses' };
+const COLL = { car: 'cars', expense: 'expenses', planned: 'planned', receipt: 'receipts', payment: 'payments', repasse: 'repasses', loan: 'loans', payable: 'payables' };
 const del = (kind, it, restore) => run(
   () => (restore ? api('POST', `/api/${COLL[kind]}/${it.id}/restore`) : api('DELETE', `/api/${COLL[kind]}/${it.id}`)),
   restore ? 'Restaurado.' : 'Excluído. Dá para restaurar pelo Histórico.');

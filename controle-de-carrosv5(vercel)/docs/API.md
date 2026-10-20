@@ -24,6 +24,8 @@ Perfis: `admin` (tudo) · `member` (lê e grava dados) · `viewer` (só lê).
 | `POST /api/users` `{username,name,role,password}` | admin | cria usuário |
 | `PATCH /api/users/:id` `{name?,role?,active?,password?}` | admin | edita; não deixa ficar sem admin ativo; trocar senha/desativar derruba as sessões dele |
 | `POST /api/cars/:id/plan` `{parts:[{label,due,valor,status?,paidAt?,quem?}]}` | admin/member | programa o recebimento da venda (entrada + parcelas) numa transação; substitui as parcelas ainda pendentes e mantém as recebidas |
+| `POST /api/payables/plan` `{loanId?, carId?, replace?, parts:[{label,tipo,due,valor,forma?,quem?,credor?,status?,paidAt?}]}` | admin/member | programa contas a pagar de um empréstimo (`loanId`) ou da compra a prazo de um carro (`carId`) numa transação; com `replace` (só empréstimo), troca as parcelas pendentes e mantém as pagas |
+| `GET/POST/PATCH/DELETE /api/loans`, `/api/payables` | — | CRUD genérico de empréstimos e contas a pagar (mesmas regras de `/api/:entity`) |
 | `PUT /api/settings` `{meta,alerta}` | admin/member | meta de margem (0 a 5 = 0 a 500%) e dias de alerta |
 | `PUT /api/settings/partners` `{A,B}` | admin | nomes dos sócios |
 | `POST /api/examples` `{today?:"AAAA-MM-DD"}` / `DELETE /api/examples` | admin/member | carrega / remove dados de exemplo (as datas partem do `today` do navegador) |

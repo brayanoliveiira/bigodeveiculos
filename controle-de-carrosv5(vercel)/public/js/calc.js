@@ -172,7 +172,8 @@ var Calc = (function () {
     }
     return out;
   }
-  function summary(derived, expenses, planned, settings, today, year) {
+  /* juros (opcional) = jurosPagos(...) de todo o período: sai do lucro, metade de cada sócio; quem pagou do bolso recebe de volta no acerto. */
+  function summary(derived, expenses, planned, settings, today, year, juros) {
     var list = Object.keys(derived).map(function (k) { return derived[k]; });
     var s = { total: list.length, estoque: 0, reservados: 0, vendidos: 0, parado: 0, prevPend: 0, fatur: 0, lucro: 0, custoVend: 0,
       perdeu: 0, proj: 0, diasSum: 0, diasN: 0, prejuizo: 0, trocaTot: 0, parados: 0, saidaVencida: 0, prevAtrasados: 0,
@@ -210,6 +211,12 @@ var Calc = (function () {
         if (d.atrasoLoc) s.saidaVencida++;
       }
     });
+    var J = juros ? juros.total : 0;
+    s.juros = J; s.lucroLiq = s.lucro - J;
+    if (J) {
+      acc[0].luc -= J / 2; acc[1].luc -= J / 2; acc[0].inv += juros.pagoA; acc[1].inv += juros.pagoB;
+      Object.keys(juros.porMes).forEach(function (k) { if (k.slice(0, 4) === String(year)) months[+k.slice(5, 7) - 1].luc -= juros.porMes[k]; });
+    }
     s.margem = s.custoVend > 0 ? s.lucro / s.custoVend : null;
     s.lucroMedio = s.vendidos ? s.lucro / s.vendidos : null;
     s.diasMedio = s.diasN ? s.diasSum / s.diasN : null;
@@ -225,6 +232,121 @@ var Calc = (function () {
     s.cat = cat; s.pessoas = pes; s.gastoTotal = gTot;
     return s;
   }
-  return { isConsig: isConsig, compute: compute, summary: summary, plan: plan, addMonths: addMonths, splitOf: splitOf, entry: entry, num: num, diff: diff, addDays: addDays, P: P };
+  /* ---------- Dívidas: empréstimos e contas a pagar ---------- */
+  var MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  function mesAno(s) { var p = String(s).split('-'); return MESES[+p[1] - 1] + '/' + p[0].slice(2); }
+  /* Parcelas de um empréstimo. l = { valor, data, modo, jurosMes, taxaMes, nParc, venc }.
+     'Juros mensais': juros todo mês (no dia do empréstimo) até a devolução; no vencimento, juros do mês + o valor emprestado.
+     'Parcelado': tabela Price com juros de taxaMes ao mês (sem juros: parcelas iguais); 1º vencimento em venc ou um mês depois.
+     Devolve [{ label, tipo, due, valor }]. */
+  function loanPlan(l) {
+    var v = N0(l.valor), out = [], i;
+    if (v <= 0 || !l.data) return out;
+    if (l.modo === 'Juros mensais') {
+      if (!l.venc || l.venc <= l.data) return out;
+      var j = num(l.jurosMes) !== null ? N0(l.jurosMes) : r2(v * N0(l.taxaMes));
+      for (i = 1; i <= 120; i++) {
+        var due = addMonths(l.data, i);
+        if (due > l.venc) break;
+        if (j > 0) out.push({ label: 'Juros ' + mesAno(due), tipo: 'Juros', due: due, valor: j });
+      }
+      var last = out.length ? out[out.length - 1].due : null;
+      if (j > 0 && (!last || mesAno(last) !== mesAno(l.venc))) out.push({ label: 'Juros ' + mesAno(l.venc), tipo: 'Juros', due: l.venc, valor: j });
+      out.push({ label: 'Devolução', tipo: 'Devolução', due: l.venc, valor: v });
+      return out;
+    }
+    var n = Math.max(1, Math.min(120, Math.round(N0(l.nParc) || 1))), t = N0(l.taxaMes);
+    var pmt = t > 0 ? v * t / (1 - Math.pow(1 + t, -n)) : v / n;
+    var cents = Math.round(pmt * 100), total = cents * n;
+    if (t <= 0) total = Math.round(v * 100); // sem juros: soma exata do valor
+    var each = t > 0 ? cents : Math.floor(total / n), left = total - each * n;
+    var anchor = l.venc || l.data, shift = l.venc ? 0 : 1;
+    for (i = 0; i < n; i++) out.push({ label: (i + 1) + '/' + n, tipo: 'Parcela', due: addMonths(anchor, i + shift), valor: (each + (i === n - 1 ? left : 0)) / 100 });
+    return out;
+  }
+  /* Rastreio do dinheiro de um empréstimo pelos carros: começa no carro comprado com ele e segue as trocas
+     (carro vendido -> carros que entraram na troca dele, origemId). Enquanto um carro da cadeia não foi vendido, o dinheiro "está" nele.
+     Quando o último é vendido sem carro de troca, o dinheiro virou dinheiro. skip(c) = true ignora o carro (ex.: troca que ficou com o dono do consignado).
+     Devolve null (carro inexistente) ou { path: [carros na ordem], holders: [carros em estoque/reservados], emDinheiro, ultimaVenda }. */
+  function loanTrail(carId, cars, skip) {
+    var by = {}, kids = {}, seen = {}, r = { path: [], holders: [], emDinheiro: false, ultimaVenda: null };
+    (cars || []).forEach(function (c) { if (!c.deleted) by[c.id] = c; });
+    Object.keys(by).forEach(function (id) {
+      var c = by[id], o = c.origemId;
+      if (o != null && by[o] && String(o) !== String(id) && !(skip && skip(c))) (kids[o] = kids[o] || []).push(c);
+    });
+    if (carId == null || !by[carId]) return null;
+    (function walk(c) {
+      if (seen[c.id]) return;
+      seen[c.id] = true; r.path.push(c);
+      if (c.status !== 'Vendido') { r.holders.push(c); return; }
+      if (c.dvenda && (!r.ultimaVenda || c.dvenda > r.ultimaVenda)) r.ultimaVenda = c.dvenda;
+      (kids[c.id] || []).sort(function (a, b) { return a.id - b.id; }).forEach(walk);
+    })(by[carId]);
+    r.emDinheiro = !r.holders.length;
+    return r;
+  }
+  /* Juros de empréstimos já pagos: custo da sociedade, descontado do lucro (não é custo de nenhum carro).
+     Juros mensais: as contas do tipo 'Juros'. Parcelado: a parte de juros de cada parcela paga (proporcional: juros total / total das parcelas).
+     Data = paidAt (ou vencimento). from/to = 'AAAA-MM-DD' (vazio = sem limite).
+     Devolve { total, pagoA, pagoB (quanto cada sócio tirou do bolso), porMes: { 'AAAA-MM': valor } }. */
+  function jurosPagos(payables, loans, from, to) {
+    var lv = {}, tot = {}, s = { total: 0, pagoA: 0, pagoB: 0, porMes: {} };
+    (loans || []).forEach(function (l) { if (!l.deleted) lv[l.id] = l; });
+    var live = (payables || []).filter(function (x) { return !x.deleted && x.loanId != null && lv[x.loanId]; });
+    live.forEach(function (x) { tot[x.loanId] = (tot[x.loanId] || 0) + N0(x.valor); });
+    live.forEach(function (x) {
+      if (x.status !== 'Pago') return;
+      var l = lv[x.loanId], v = N0(x.valor), t = tot[x.loanId];
+      var j = l.modo === 'Parcelado' ? (t > 0 ? v * Math.max(0, t - N0(l.valor)) / t : 0) : (x.tipo === 'Juros' ? v : 0);
+      var d = x.paidAt || x.due;
+      if (j <= 0 || (from && d < from) || (to && d > to)) return;
+      var sp = splitOf(j, x.quem), k = String(d).slice(0, 7);
+      s.total += j; s.pagoA += sp[0]; s.pagoB += sp[1]; s.porMes[k] = (s.porMes[k] || 0) + j;
+    });
+    s.total = r2(s.total); s.pagoA = r2(s.pagoA); s.pagoB = r2(s.pagoB);
+    Object.keys(s.porMes).forEach(function (k) { s.porMes[k] = r2(s.porMes[k]); });
+    return s;
+  }
+  /* Resumo das contas a pagar. Conta paga por "ambos" (quem vazio) divide meio a meio.
+     Ignora contas excluídas e as de empréstimo ou carro excluído. */
+  function debts(payables, loans, cars, today) {
+    var lv = {}, cv = {}, s = { total: 0, A: 0, B: 0, atrasado: 0, prox30: 0, pago: 0, jurosPagos: 0, jurosPend: 0, jurosMes: 0, prox: null, n: 0, porLoan: {}, porCar: {} };
+    (loans || []).forEach(function (l) { if (!l.deleted) lv[l.id] = l; });
+    (cars || []).forEach(function (c) { if (!c.deleted) cv[c.id] = c; });
+    var em30 = addDays(today, 30);
+    (payables || []).forEach(function (x) {
+      if (x.deleted) return;
+      if (x.loanId != null ? !lv[x.loanId] : !cv[x.carId]) return;
+      var v = N0(x.valor), key = x.loanId != null ? 'porLoan' : 'porCar', id = x.loanId != null ? x.loanId : x.carId;
+      var g = s[key][id] || (s[key][id] = { total: 0, pago: 0, falta: 0, A: 0, B: 0, atrasado: 0, prox: null, proxValor: 0, n: 0, nPago: 0, jurosPagos: 0, itens: [] });
+      g.total += v; g.n++; g.itens.push(x);
+      if (x.status === 'Pago') {
+        s.pago += v; g.pago += v; g.nPago++;
+        if (x.tipo === 'Juros') { s.jurosPagos += v; g.jurosPagos += v; }
+        return;
+      }
+      var sp = splitOf(v, x.quem);
+      s.total += v; s.A += sp[0]; s.B += sp[1]; s.n++;
+      g.falta += v; g.A += sp[0]; g.B += sp[1];
+      if (x.due < today) { s.atrasado += v; g.atrasado += v; }
+      else if (x.due <= em30) s.prox30 += v;
+      if (s.prox === null || x.due < s.prox) s.prox = x.due;
+      if (g.prox === null || x.due < g.prox) { g.prox = x.due; g.proxValor = v; } else if (x.due === g.prox) g.proxValor += v;
+    });
+    Object.keys(s.porLoan).forEach(function (id) {
+      var l = lv[id], g = s.porLoan[id];
+      g.itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); });
+      g.juros = r2(g.total - N0(l.valor)); // juros do empréstimo inteiro (pago + a pagar)
+      if (l.modo === 'Parcelado' && g.total > 0) g.jurosPagos = r2(g.pago * g.juros / g.total); // parcela = parte juros + parte valor
+      if (l.modo === 'Juros mensais' && g.falta > 0.004) s.jurosMes += num(l.jurosMes) !== null ? N0(l.jurosMes) : r2(N0(l.valor) * N0(l.taxaMes));
+      if (l.modo === 'Parcelado') s.jurosPagos += g.jurosPagos;
+      s.jurosPend += Math.max(0, r2(g.juros - g.jurosPagos)); // juros que ainda vamos pagar
+      g.quitado = g.falta <= 0.004;
+    });
+    Object.keys(s.porCar).forEach(function (id) { s.porCar[id].itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); }); });
+    return s;
+  }
+  return { loanPlan: loanPlan, debts: debts, jurosPagos: jurosPagos, loanTrail: loanTrail, isConsig: isConsig, compute: compute, summary: summary, plan: plan, addMonths: addMonths, splitOf: splitOf, entry: entry, num: num, diff: diff, addDays: addDays, P: P };
 })();
 if (typeof module !== 'undefined') module.exports = Calc;

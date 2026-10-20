@@ -81,6 +81,20 @@ async function crossCheck(db, name, merged, selfId) {
     const car = await db.get('SELECT dono FROM cars WHERE id = ?', merged.carId);
     if (!car || !String(car.dono || '').trim()) throw new HttpError(400, 'Só carros consignados (com dono) têm repasse.');
   }
+  if (name === 'loans') {
+    if (!(merged.valor > 0)) throw new HttpError(400, 'O valor emprestado precisa ser maior que zero.');
+    if (merged.modo === 'Juros mensais') {
+      if (isBlank(merged.venc)) throw new HttpError(400, 'Informe a data em que o valor precisa ser devolvido.');
+      if (merged.venc <= merged.data) throw new HttpError(400, 'A devolução precisa ser depois da data do empréstimo.');
+    }
+    if (merged.modo === 'Parcelado' && !(merged.nParc >= 1)) throw new HttpError(400, 'Informe o número de parcelas.');
+  }
+  if (name === 'payables') {
+    if (!(merged.valor > 0)) throw new HttpError(400, 'O valor precisa ser maior que zero.');
+    if (merged.origem === 'Carro' && merged.carId == null) throw new HttpError(400, 'Escolha o carro desta conta.');
+    if (merged.origem === 'Empréstimo' && merged.loanId == null) throw new HttpError(400, 'Escolha o empréstimo desta conta.');
+    if (merged.status === 'Pago' && isBlank(merged.paidAt)) throw new HttpError(400, 'Informe a data do pagamento.');
+  }
   if (name === 'receipts' && merged.status === 'Recebido' && isBlank(merged.paidAt)) {
     throw new HttpError(400, 'Informe a data em que o dinheiro entrou.');
   }
@@ -294,6 +308,47 @@ async function schedulePlan(db, user, carId, parts) {
   });
 }
 
+/**
+ * Programa as contas a pagar de um empréstimo (loanId) ou da compra de um carro (carId), tudo numa transação.
+ * Com replace (só empréstimo), as parcelas ainda pendentes do empréstimo são trocadas pelas novas; as pagas ficam.
+ */
+async function schedulePayables(db, user, { loanId, carId, replace, parts }) {
+  const def = entities.payables;
+  return db.tx(async (db) => {
+    const lid = loanId == null ? null : Number(loanId), cid = carId == null ? null : Number(carId);
+    const owner = lid != null ? await db.get('SELECT * FROM loans WHERE id = ?', lid) : await db.get('SELECT * FROM cars WHERE id = ?', cid);
+    if (!owner || owner.deleted) throw new HttpError(404, lid != null ? 'Empréstimo não encontrado.' : 'Carro não encontrado.');
+    if (!Array.isArray(parts) || !parts.length || parts.length > 130) throw new HttpError(400, 'Informe de 1 a 130 parcelas.');
+    const p = await partners(db);
+    const ts = now();
+    const changes = [];
+    if (lid != null && replace) {
+      const old = await db.all("SELECT id FROM payables WHERE loanId = ? AND deleted = 0 AND status = 'Pendente'", lid);
+      for (const o of old) await db.run('UPDATE payables SET deleted = 1, updatedBy = ?, updatedAt = ? WHERE id = ?', user.id, ts, o.id);
+      if (old.length) changes.push({ f: 'Parcelas pendentes anteriores', de: `${old.length}`, para: 'substituídas' });
+    }
+    for (const [i, part] of parts.entries()) {
+      const input = { ...part, origem: lid != null ? 'Empréstimo' : 'Carro', loanId: lid, carId: lid != null ? (owner.carId ?? null) : cid };
+      if (lid != null) input.credor = owner.credor;
+      const { values, errors } = await validate(def, input, db, null);
+      for (const [k, f] of Object.entries(def.fields)) if (values[k] === undefined && f.default !== undefined) values[k] = f.default;
+      if (errors.length) throw new HttpError(400, `Parcela ${i + 1}: ${errors[0]}`, { errors });
+      await crossCheck(db, 'payables', values, null);
+      const all = { ...values, example: 0, deleted: 0, createdBy: user.id, createdAt: ts, updatedBy: user.id, updatedAt: ts };
+      const keys = Object.keys(all);
+      await db.run(`INSERT INTO payables (${keys.map(q).join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`, ...keys.map((k) => all[k]));
+      changes.push({
+        f: values.label || `Parcela ${i + 1}`, de: null,
+        para: `${await fmtValue(db, def.fields.valor, values.valor, p)} em ${await fmtValue(db, def.fields.due, values.due, p)}${values.status === 'Pago' ? ' (pago)' : ''}`,
+      });
+    }
+    if (lid != null) await writeAudit(db, user.id, 'loan', lid, entities.loans.labelOf(owner), 'programou', changes);
+    else await writeAudit(db, user.id, 'car', cid, owner.name, 'programou a pagar', changes);
+    await bump(db);
+    return { count: parts.length };
+  });
+}
+
 async function getData(db) {
   const rows = async (t) => (await db.all(`SELECT * FROM ${t} ORDER BY id`)).map(serialize);
   return {
@@ -304,6 +359,8 @@ async function getData(db) {
     receipts: await rows('receipts'),
     payments: await rows('payments'),
     repasses: await rows('repasses'),
+    loans: await rows('loans'),
+    payables: await rows('payables'),
     settings: {
       meta: Number(await getSetting(db, 'meta')),
       alerta: Number(await getSetting(db, 'alerta')),
@@ -323,5 +380,5 @@ async function getAudit(db, limit = 500, offset = 0) {
 
 module.exports = {
   HttpError, now, getSetting, setSetting, partners, bump, version, writeAudit, serialize,
-  createItem, updateItem, setDeleted, schedulePlan, saveSettings, savePartners, getData, getAudit,
+  createItem, updateItem, setDeleted, schedulePlan, schedulePayables, saveSettings, savePartners, getData, getAudit,
 };

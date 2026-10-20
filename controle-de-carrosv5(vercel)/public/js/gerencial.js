@@ -10,6 +10,8 @@ const nm = (c) => names()[c] || '—';
 const csvReg = {};
 let csvSeq = 0;
 
+/** Juros de empréstimos pagos no período: saem do lucro (Calc.jurosPagos). */
+const jurosDe = (p) => Calc.jurosPagos(S.payables, S.loans, p.from, p.to);
 function per() { return Reports.periodo(S.ui.per, today(), { from: S.ui.from, to: S.ui.to }); }
 function perText() {
   const p = per();
@@ -56,31 +58,32 @@ function groupedChart(rows, series, aria) {
 const R = {};
 
 R.geral = (D) => {
-  const p = per(), v = Reports.visaoGeral(D, S.expenses, today(), S.settings, p.from, p.to);
-  const soc = Reports.porSocio(D, S.expenses, p.from, p.to), lm = Reports.lucroMensal(D, p.from, p.to);
+  const p = per(), J = jurosDe(p), v = Reports.visaoGeral(D, S.expenses, today(), S.settings, p.from, p.to, J);
+  const soc = Reports.porSocio(D, S.expenses, p.from, p.to, J), lm = Reports.lucroMensal(D, p.from, p.to, J);
   let h = `<p class="mut small" style="margin:0">Vendas e gastos de ${esc(perText())}. Estoque e recebíveis são a situação de hoje.</p>`;
-  h += kpis([K('Lucro das vendas', brl(v.lucro), '', true), K('Vendas', String(v.vendas)), K('Faturamento (inclui trocas)', brl(v.fat)), K('Margem sobre o custo', pct(v.margem)),
+  h += kpis([...(v.juros ? [K('Lucro líquido (após juros)', brl(v.lucroLiq), sign(v.lucroLiq), true), K('Juros de empréstimos pagos', brl(v.juros), 'neg')] : []), K('Lucro das vendas', brl(v.lucro), '', !v.juros), K('Vendas', String(v.vendas)), K('Faturamento (inclui trocas)', brl(v.fat)), K('Margem sobre o custo', pct(v.margem)),
     K('Ticket médio', brl(v.ticket)), K('Lucro médio por carro', brl(v.lucroMedio), sign(v.lucroMedio)), K('Dias médios para vender', v.diasMedio == null ? '—' : Math.round(v.diasMedio) + ' dias'), K('Deixou de ganhar (descontos)', brl(v.perdeu)),
     K('Capital em estoque', brl(v.capitalEstoque)), K('Lucro projetado do estoque', brl(v.projEstoque), sign(v.projEstoque)), K('A receber de clientes', brl(v.aReceber)), K('Atrasado', brl(v.atrasado), v.atrasado > 0 ? 'neg' : ''),
     K('Gastos no período', brl(v.gastos)), K('Vendas com prejuízo', String(v.prejuizo), v.prejuizo ? 'neg' : '')]);
   const sociosCols = [
     { label: 'Sócio', get: (r) => esc(r.nome) }, { label: 'Investido em estoque', r: true, get: (r) => brl(r.est) }, { label: 'Investido nos vendidos', r: true, get: (r) => brl(r.vend) },
-    { label: 'Lucro no período', r: true, get: (r) => val(r.luc) }, { label: 'Saldo a acertar', r: true, get: (r) => val(r.saldo) }];
-  const rows = ['A', 'B'].map((c) => ({ nome: nm(c), est: soc[c].estoque.inv, vend: soc[c].vendidos.inv, luc: soc[c].vendidos.luc, saldo: soc[c].saldo }));
+    { label: 'Lucro líquido no período', r: true, get: (r) => val(r.luc) }, { label: 'Saldo a acertar', r: true, get: (r) => val(r.saldo) }];
+  const rows = ['A', 'B'].map((c) => ({ nome: nm(c), est: soc[c].estoque.inv, vend: soc[c].vendidos.inv, luc: soc[c].vendidos.lucLiq, saldo: soc[c].saldo }));
   h += panel('Resumo por sócio', table(sociosCols, rows), null);
-  h += panel('Lucro por mês', legend([['sw-a', nm('A')], ['sw-b', nm('B')]]) + groupedChart(lm.rows, [{ k: 'lucA', cls: 'ba', label: nm('A') }, { k: 'lucB', cls: 'bb', label: nm('B') }], 'Lucro por mês e por sócio'), null);
+  h += panel('Lucro líquido por mês', legend([['sw-a', nm('A')], ['sw-b', nm('B')]]) + groupedChart(lm.rows, [{ k: 'liqA', cls: 'ba', label: nm('A') }, { k: 'liqB', cls: 'bb', label: nm('B') }], 'Lucro líquido por mês e por sócio'), null);
   return { html: `<div class="stack">${h}</div>` };
 };
 
 R.socios = (D) => {
-  const p = per(), soc = Reports.porSocio(D, S.expenses, p.from, p.to), est = Reports.estoque(D, S.settings);
+  const p = per(), soc = Reports.porSocio(D, S.expenses, p.from, p.to, jurosDe(p)), est = Reports.estoque(D, S.settings);
   const A = soc.A, B = soc.B, sum = (f) => f(A) + f(B);
   const defs = [
     ['Investido em carros em estoque', (s) => s.estoque.inv, 'Entrada + gastos pagos pelo sócio nos carros ainda não vendidos (consignado: só os gastos)'],
     ['  Entrada paga', (s) => s.estoque.entrada], ['  Gastos pagos', (s) => s.estoque.gastos],
     ['Investido em carros vendidos (período)', (s) => s.vendidos.inv, 'Entrada + gastos dos carros vendidos no período'],
     ['Total investido', (s) => s.totalInvestido],
-    ['Lucro das vendas (período)', (s) => s.vendidos.luc], ['Retorno sobre o investido nos vendidos', (s) => s.roi, null, true],
+    ['Lucro das vendas (período)', (s) => s.vendidos.luc], ['Juros de empréstimos (metade de cada)', (s) => -s.vendidos.juros], ['Lucro líquido (período)', (s) => s.vendidos.lucLiq],
+    ['Juros pagos do próprio bolso', (s) => s.vendidos.jurosPago, 'Volta para o sócio no acerto'], ['Retorno sobre o investido nos vendidos', (s) => s.roi, null, true],
     ['Dinheiro e carros recebidos nas vendas', (s) => s.vendidos.rec], ['Já entrou no caixa', (s) => s.vendidos.recHoje], ['Ainda a receber de clientes', (s) => s.vendidos.aReceber],
     ['Repasses a donos de carros consignados (quando tudo for pago)', (s) => s.vendidos.rep, 'O dinheiro da venda que não é nosso: vai para o dono do carro'], ['Já repassado a donos', (s) => s.vendidos.repHoje],
     ['Saldo a acertar com o outro sócio (quando tudo for recebido)', (s) => s.saldo], ['Saldo hoje (só o que já entrou)', (s) => s.saldoHoje],
@@ -91,7 +94,7 @@ R.socios = (D) => {
   const cols = [{ label: 'Indicador', get: (r) => esc(r.l.trim()) + (r.l.startsWith('  ') ? '' : '') }, { label: nm('A'), r: true, get: (r) => fmt(r.a, r.isPct) }, { label: nm('B'), r: true, get: (r) => fmt(r.b, r.isPct) }, { label: 'Total', r: true, get: (r) => fmt(r.t, r.isPct) }];
   let h = `<p class="mut small" style="margin:0">Vendas de ${esc(perText())}. O investido em estoque é a situação de hoje.</p>`;
   h += kpis([K(`Investido por ${nm('A')}`, brl(A.totalInvestido), '', true), K(`Investido por ${nm('B')}`, brl(B.totalInvestido), '', true), K(`Em estoque (${nm('A')})`, brl(A.estoque.inv)), K(`Em estoque (${nm('B')})`, brl(B.estoque.inv)),
-    K(`Lucro de ${nm('A')}`, brl(A.vendidos.luc), sign(A.vendidos.luc)), K(`Lucro de ${nm('B')}`, brl(B.vendidos.luc), sign(B.vendidos.luc))]);
+    K(`Lucro líquido de ${nm('A')}`, brl(A.vendidos.lucLiq), sign(A.vendidos.lucLiq)), K(`Lucro líquido de ${nm('B')}`, brl(B.vendidos.lucLiq), sign(B.vendidos.lucLiq))]);
   h += panel('Por sócio', table(cols, rows), { name: 'socios', cols: [{ k: 'l', label: 'Indicador' }, { k: 'a', label: nm('A') }, { k: 'b', label: nm('B') }, { k: 't', label: 'Total' }], rows: rows.map((r) => ({ l: r.l.trim(), a: r.a, b: r.b, t: r.t })) });
   const carCols = [{ label: 'Carro', get: (r) => esc(r.car) }, { label: 'Dias', r: true, get: (r) => (r.dias == null ? '—' : r.dias) }, { label: `Investido por ${nm('A')}`, r: true, get: (r) => brl(r.invA) }, { label: `Investido por ${nm('B')}`, r: true, get: (r) => brl(r.invB) }, { label: 'Custo total', r: true, get: (r) => brl(r.custo) }];
   h += panel('Capital investido em cada carro do estoque', table(carCols, est.rows, { Carro: 'Total', [`Investido por ${nm('A')}`]: brl(est.total.A), [`Investido por ${nm('B')}`]: brl(est.total.B), 'Custo total': brl(est.total.custo) }),
@@ -101,15 +104,16 @@ R.socios = (D) => {
 };
 
 R.lucro = (D) => {
-  const p = per(), lm = Reports.lucroMensal(D, p.from, p.to);
+  const p = per(), lm = Reports.lucroMensal(D, p.from, p.to, jurosDe(p));
   const cols = [
     { label: 'Mês', get: (r) => esc(mlabel(r.mes)) }, { label: 'Vendas', r: true, get: (r) => r.n }, { label: 'Faturamento', r: true, get: (r) => brl(r.fat) }, { label: 'Custo', r: true, get: (r) => brl(r.custo) },
-    { label: 'Lucro', r: true, get: (r) => val(r.lucro) }, { label: `Lucro ${nm('A')}`, r: true, get: (r) => val(r.lucA) }, { label: `Lucro ${nm('B')}`, r: true, get: (r) => val(r.lucB) }, { label: 'Margem', r: true, get: (r) => pct(r.margem) }];
+    { label: 'Lucro dos carros', r: true, get: (r) => val(r.lucro) }, { label: 'Juros pagos', r: true, get: (r) => (r.juros ? val(-r.juros) : '—') }, { label: 'Lucro líquido', r: true, get: (r) => val(r.liq) },
+    { label: `Líquido ${nm('A')}`, r: true, get: (r) => val(r.liqA) }, { label: `Líquido ${nm('B')}`, r: true, get: (r) => val(r.liqB) }, { label: 'Margem', r: true, get: (r) => pct(r.margem) }];
   const t = lm.total;
-  const foot = { Mês: 'Total', Vendas: t.n, Faturamento: brl(t.fat), Custo: brl(t.custo), Lucro: brl(t.lucro), [`Lucro ${nm('A')}`]: brl(t.lucA), [`Lucro ${nm('B')}`]: brl(t.lucB), Margem: pct(t.margem) };
-  const csvCols = [{ k: 'mes', label: 'Mês' }, { k: 'n', label: 'Vendas' }, { k: 'fat', label: 'Faturamento' }, { k: 'custo', label: 'Custo' }, { k: 'lucro', label: 'Lucro' }, { k: 'lucA', label: `Lucro ${nm('A')}` }, { k: 'lucB', label: `Lucro ${nm('B')}` }, { k: 'margem', label: 'Margem' }];
-  let h = `<p class="mut small" style="margin:0">Lucro de cada carro vendido, no mês da data da venda (regime de competência) e dividido entre os sócios conforme a divisão de cada carro. O que de fato entrou no caixa está em "Caixa e recebíveis".</p>`;
-  h += panel('Lucro por mês e por sócio', legend([['sw-a', nm('A')], ['sw-b', nm('B')]]) + groupedChart(lm.rows, [{ k: 'lucA', cls: 'ba', label: nm('A') }, { k: 'lucB', cls: 'bb', label: nm('B') }], 'Lucro por mês e por sócio'));
+  const foot = { Mês: 'Total', Vendas: t.n, Faturamento: brl(t.fat), Custo: brl(t.custo), 'Lucro dos carros': brl(t.lucro), 'Juros pagos': brl(-t.juros), 'Lucro líquido': brl(t.liq), [`Líquido ${nm('A')}`]: brl(t.liqA), [`Líquido ${nm('B')}`]: brl(t.liqB), Margem: pct(t.margem) };
+  const csvCols = [{ k: 'mes', label: 'Mês' }, { k: 'n', label: 'Vendas' }, { k: 'fat', label: 'Faturamento' }, { k: 'custo', label: 'Custo' }, { k: 'lucro', label: 'Lucro dos carros' }, { k: 'juros', label: 'Juros pagos' }, { k: 'liq', label: 'Lucro líquido' }, { k: 'liqA', label: `Líquido ${nm('A')}` }, { k: 'liqB', label: `Líquido ${nm('B')}` }, { k: 'margem', label: 'Margem' }];
+  let h = `<p class="mut small" style="margin:0">Lucro de cada carro vendido, no mês da data da venda (regime de competência) e dividido entre os sócios conforme a divisão de cada carro. O que de fato entrou no caixa está em "Caixa e recebíveis". Juros de empréstimos entram no mês em que foram pagos e saem do lucro, metade de cada sócio.</p>`;
+  h += panel('Lucro líquido por mês e por sócio', legend([['sw-a', nm('A')], ['sw-b', nm('B')]]) + groupedChart(lm.rows, [{ k: 'liqA', cls: 'ba', label: nm('A') }, { k: 'liqB', cls: 'bb', label: nm('B') }], 'Lucro líquido por mês e por sócio'));
   h += panel('Tabela mensal', table(cols, lm.rows, foot), { name: 'lucro-mensal', cols: csvCols, rows: lm.rows.concat([lm.total]) });
   return { html: `<div class="stack">${h}</div>` };
 };

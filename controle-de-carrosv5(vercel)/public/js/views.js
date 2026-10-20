@@ -3,7 +3,7 @@ import { $, esc, brl, pct, dmy, today, stamp, sign, initials, marcaOf } from './
 import { S, LISTS, names, itemOf, carName, liveCars, locClass } from './state.js';
 
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-const KIND_NAME = { car: 'carro', expense: 'gasto', planned: 'gasto previsto', receipt: 'recebimento', payment: 'pagamento', repasse: 'repasse', settings: '', user: 'usuário' };
+const KIND_NAME = { car: 'carro', expense: 'gasto', planned: 'gasto previsto', receipt: 'recebimento', payment: 'pagamento', repasse: 'repasse', loan: 'empréstimo', payable: 'conta a pagar', settings: '', user: 'usuário' };
 const ROLE_NAME = { admin: 'Administrador', member: 'Membro', viewer: 'Só leitura' };
 const nm = (code) => names()[code] || '—';
 const derived = () => Object.values(S.D);
@@ -34,6 +34,10 @@ function fipeNote(c) {
 function carCard(d) {
   const c = d.c, open = S.ui.open[c.id];
   const locInfo = `<div class="locrow">${stPill(c.status)}${locPill(c)}${c.locdet ? `<span>${esc(c.locdet)}</span>` : ''}${d.diasLoc != null ? `<span class="mut">há ${d.diasLoc} dia${d.diasLoc === 1 ? '' : 's'}</span>` : ''}${d.atrasoLoc ? '<span class="pill late">Saída atrasada</span>' : d.saiLogo ? '<span class="pill soon">Sai em até 2 dias</span>' : ''}</div>`;
+  const dv = S.DV.porCar[c.id];
+  const apagar = dv && dv.falta > 0.004 ? `<div class="locrow"><button class="pill ${dv.atrasado > 0.004 ? 'late' : 'soon'}" data-act="dv-parc-car" data-id="${c.id}">A pagar ${brl(dv.falta)}${dv.prox ? ' · vence ' + dmy(dv.prox) : ''}</button></div>` : '';
+  const lh = (S.loanHold || {})[c.id];
+  const emprest = lh && lh.length ? `<div class="locrow"><span class="pill soon" title="${esc(lh.map((l) => l.obs || '').filter(Boolean).join(' · '))}">Dinheiro de empréstimo: ${lh.map((l) => esc(l.credor)).join(', ')}</span></div>` : '';
   const hist = c.leilao || c.sinistro
     ? `<div class="locrow">${c.leilao ? '<span class="pill late">Leilão</span>' : ''}${c.sinistro ? '<span class="pill late">Sinistro</span>' : ''}${c.histObs ? `<span class="mut small">${esc(c.histObs)}</span>` : ''}</div>` : '';
   const n2 = d.vendido
@@ -42,7 +46,7 @@ function carCard(d) {
   const foot = d.vendido && d.lucro != null
     ? `${d.consig ? 'Comissão' : 'Lucro'}: ${nm('A')} ${brl(d.lucA)} · ${nm('B')} ${brl(d.lucB)}`
     : `Divisão: ${nm('A')} ${Math.round(d.pA * 100)}% · ${nm('B')} ${Math.round((1 - d.pA) * 100)}%`;
-  let h = `<article class="card cs-${esc(String(c.status || 'Em').split(' ')[0])}" data-id="${c.id}"><div class="card-h">${plate(c.placa)}<div class="ct"><h3>${esc(c.name)}</h3><p class="mut">${[c.ano, c.cor, c.km != null ? Number(c.km).toLocaleString('pt-BR') + ' km' : null, c.dcompra ? 'comprado em ' + dmy(c.dcompra) : null, d.dias != null ? d.dias + ' dias' : null].filter(Boolean).map(esc).join(' · ')}</p></div></div>${locInfo}${hist}` +
+  let h = `<article class="card cs-${esc(String(c.status || 'Em').split(' ')[0])}" data-id="${c.id}"><div class="card-h">${plate(c.placa)}<div class="ct"><h3>${esc(c.name)}</h3><p class="mut">${[c.ano, c.cor, c.km != null ? Number(c.km).toLocaleString('pt-BR') + ' km' : null, c.dcompra ? 'comprado em ' + dmy(c.dcompra) : null, d.dias != null ? d.dias + ' dias' : null].filter(Boolean).map(esc).join(' · ')}</p></div></div>${locInfo}${hist}${apagar}${emprest}` +
     `<dl class="nums"><div><dt>Custo total</dt><dd>${brl(d.custo)}</dd></div>${n2}</dl>` +
     (c.fipe ? `<div class="fipe"><span>FIPE <b class="num">${brl(Calc.num(c.fipe))}</b></span>${fipeNote(c)}</div>` : '') +
     (d.entregue ? `<div class="consig"><span class="pill dono">Carro de troca · fica com ${esc(c.dono)}</span><span class="mut">Não conta como nosso estoque; o valor abate o repasse.</span></div>` : d.consig ? `<div class="consig"><span class="pill dono">Consignado · ${esc(c.dono)}</span><span>Repasse <b class="num">${brl(d.repasse)}</b></span>${d.emEspecie > 0 ? `<span>Já em carro <b class="num">${brl(d.emEspecie)}</b></span>` : ''}${d.repFalta > 0.004 ? `<span class="pill soon">Falta repassar ${brl(d.repFalta)}</span>` : '<span class="pill ok">Repassado</span>'}<button class="btn sm" data-act="repasses" data-id="${c.id}">Repasses</button></div>` : '') +
@@ -89,7 +93,8 @@ views.resumo = {
   mount(el) { this.paint(el); },
   paint(el) {
     el = el || $('#view');
-    const s = Calc.summary(S.D, S.expenses, S.planned, S.settings, today(), S.year);
+    const J = Calc.jurosPagos(S.payables, S.loans);
+    const s = Calc.summary(S.D, S.expenses, S.planned, S.settings, today(), S.year, J);
     if (!s.total) {
       el.innerHTML = empty('Nenhum carro ainda', 'Cadastre o primeiro carro para ver lucro, dinheiro parado e o acerto entre vocês dois.', 'Cadastrar primeiro carro', 'new-car') +
         (S.canWrite ? '<div class="empty" style="border-style:solid"><p class="mut" style="margin:0">Quer testar antes? Carregue dados de exemplo e remova depois em Ajustes.</p><button class="btn" data-act="examples">Carregar exemplos</button></div>' : '');
@@ -100,23 +105,24 @@ views.resumo = {
     if (s.saidaVencida) al.push(['onde', `${s.saidaVencida} ${s.saidaVencida === 1 ? 'carro com saída do local atrasada' : 'carros com saída do local atrasada'}`]);
     if (s.parcAtras) al.push(['vendas', `${s.parcAtras} ${s.parcAtras === 1 ? 'parcela de venda atrasada' : 'parcelas de venda atrasadas'} (${brl(s.atrasado)})`]);
     if (s.repFalta > 0.004) al.push(['carros', `Falta repassar ${brl(s.repFalta)} a donos de carros consignados`]);
+    if (S.DV.atrasado > 0.004) al.push([Object.values(S.DV.porCar).some((g) => g.atrasado > 0.004) ? 'apagar' : 'emprestimos', `Conta a pagar atrasada: ${brl(S.DV.atrasado)}`]);
     if (s.prevAtrasados) al.push(['previstos', `${s.prevAtrasados} ${s.prevAtrasados === 1 ? 'gasto previsto atrasado' : 'gastos previstos atrasados'}`]);
     let h = `<div class="alerts">${al.length ? al.map((a) => `<button class="alert" data-go="${a[0]}">${esc(a[1])}</button>`).join('') : '<div class="alert ok">Nenhum alerta no momento.</div>'}</div>`;
     const K = (t, v, cls, hero) => `<div class="kpi${hero ? ' hero' : ''}"><dt>${esc(t)}</dt><dd class="${cls || ''}">${v}</dd></div>`;
-    const soc = Reports.porSocio(S.D, S.expenses);
+    const soc = Reports.porSocio(S.D, S.expenses, '', '', J), liqTxt = J.total ? 'Lucro líquido' : 'Lucro realizado';
     h += '<dl class="grid kpis socios" style="margin:0 0 12px">' + ['A', 'B'].map((p) =>
-      K(`Investido hoje · ${nm(p)}`, brl(soc[p].estoque.inv), '', true) + K(`Lucro realizado · ${nm(p)}`, brl(soc[p].vendidos.luc), sign(soc[p].vendidos.luc), true)).join('') + '</dl>';
-    h += '<dl class="grid kpis" style="margin:0">' + K('Lucro realizado', brl(s.lucro), '', true) + K('Em estoque / reservados', `${s.estoque} / ${s.reservados}`) + K('Vendidos', String(s.vendidos)) +
-      K('Dinheiro parado em estoque', brl(s.parado)) + K('Gastos previstos pendentes', brl(s.prevPend)) + K('Lucro projetado do estoque', brl(s.proj), sign(s.proj)) +
+      K(`Investido hoje · ${nm(p)}`, brl(soc[p].estoque.inv), '', true) + K(`${liqTxt} · ${nm(p)}`, brl(soc[p].vendidos.lucLiq), sign(soc[p].vendidos.lucLiq), true)).join('') + '</dl>';
+    h += '<dl class="grid kpis" style="margin:0">' + (J.total ? K('Lucro líquido (após juros)', brl(s.lucroLiq), sign(s.lucroLiq), true) + K('Lucro dos carros vendidos', brl(s.lucro)) + K('Juros de empréstimos pagos', brl(J.total), 'neg') : K('Lucro realizado', brl(s.lucro), '', true)) + K('Em estoque / reservados', `${s.estoque} / ${s.reservados}`) + K('Vendidos', String(s.vendidos)) +
+      K('Dinheiro parado em estoque', brl(s.parado)) + K('Gastos previstos pendentes', brl(s.prevPend)) + (S.DV.jurosPend > 0.004 ? K('Lucro projetado do estoque (após juros a pagar)', brl(s.proj - S.DV.jurosPend), sign(s.proj - S.DV.jurosPend)) + K('Juros ainda a pagar', brl(S.DV.jurosPend), 'neg') : K('Lucro projetado do estoque', brl(s.proj), sign(s.proj))) +
       K('Faturamento (inclui trocas)', brl(s.fatur)) + K('Margem média', pct(s.margem)) + K('Lucro médio por carro', brl(s.lucroMedio), sign(s.lucroMedio)) +
       K('Deixou de ganhar (descontos)', brl(s.perdeu)) + K('Dias médios para vender', s.diasMedio == null ? '—' : Math.round(s.diasMedio) + ' dias') + K('Recebido em carro de troca', brl(s.trocaTot)) +
-      K('A receber de clientes', brl(s.aReceber)) + K('Parcelas atrasadas', brl(s.atrasado), s.atrasado > 0 ? 'neg' : '') + (s.consigEstoque || s.repFalta > 0.004 ? K('A repassar a donos', brl(s.repFalta), s.repFalta > 0.004 ? 'neg' : '') : '') + '</dl>';
+      K('A receber de clientes', brl(s.aReceber)) + (S.DV.total > 0.004 ? K('A pagar (veículos e empréstimos)', brl(S.DV.total)) : '') + K('Parcelas atrasadas', brl(s.atrasado), s.atrasado > 0 ? 'neg' : '') + (s.consigEstoque || s.repFalta > 0.004 ? K('A repassar a donos', brl(s.repFalta), s.repFalta > 0.004 ? 'neg' : '') : '') + '</dl>';
     h += `<section class="panel"><h2>Investido por sócio</h2><p class="mut small" style="margin:0 0 8px">Entrada + gastos que cada um pagou, mesmo antes de vender.</p><div class="tbl" style="border:0"><table class="compact" style="min-width:0"><thead><tr><th>Sócio</th><th class="r">Em estoque</th><th class="r">Em carros vendidos</th><th class="r">Total investido</th></tr></thead><tbody>${['A', 'B'].map((c) => `<tr><td>${esc(nm(c))}</td><td class="r num">${brl(soc[c].estoque.inv)}</td><td class="r num">${brl(soc[c].vendidos.inv)}</td><td class="r num"><b>${brl(soc[c].totalInvestido)}</b></td></tr>`).join('')}</tbody></table></div></section>`;
     const [a0] = s.acerto;
     h += '<div class="grid two"><section class="panel"><h2>Acerto entre sócios</h2><div class="tbl" style="border:0"><table class="compact" style="min-width:0"><thead><tr><th>Sócio</th><th class="r">Investiu</th><th class="r">Recebeu</th><th class="r">Lucro</th><th class="r">Saldo</th></tr></thead><tbody>' +
       s.acerto.map((a) => `<tr><td>${esc(nm(a.nome))}</td><td class="r num">${brl(a.inv)}</td><td class="r num">${brl(a.rec)}</td><td class="r num">${brl(a.luc)}</td><td class="r num ${sign(a.saldo)}">${brl(a.saldo)}</td></tr>`).join('') + '</tbody></table></div>';
     const msg = Math.abs(a0.saldo) < 0.005 ? 'Ninguém deve nada.' : a0.saldo > 0 ? `${nm('B')} paga ${brl(a0.saldo)} a ${nm('A')}.` : `${nm('A')} paga ${brl(-a0.saldo)} a ${nm('B')}.`;
-    h += `<p style="margin:10px 0 0"><b>${esc(msg)}</b></p><p class="mut" style="margin:4px 0 0;font-size:12.5px">${s.aReceber > 0.004 ? `Ainda falta entrar ${brl(s.aReceber)} de clientes: o saldo acima já considera tudo recebido. ` : ''}Só carros vendidos. Cada um recebe o que investiu mais a parte do lucro; desconta o dinheiro e o carro de troca que já pegou.</p></section>`;
+    h += `<p style="margin:10px 0 0"><b>${esc(msg)}</b></p><p class="mut" style="margin:4px 0 0;font-size:12.5px">${s.aReceber > 0.004 ? `Ainda falta entrar ${brl(s.aReceber)} de clientes: o saldo acima já considera tudo recebido. ` : ''}Só carros vendidos. Cada um recebe o que investiu mais a parte do lucro; desconta o dinheiro e o carro de troca que já pegou.${J.total ? ` Os juros de empréstimos pagos (${brl(J.total)}) saem do lucro, metade de cada um; quem pagou do bolso recebe de volta.` : ''}</p></section>`;
     h += `<section class="panel"><h2>Lucro por mês</h2><div class="yearnav"><button class="btn sm" data-act="yr" data-d="-1" aria-label="Ano anterior">‹</button><b class="num">${S.year}</b><button class="btn sm" data-act="yr" data-d="1" aria-label="Próximo ano">›</button></div>${chart(s.months)}</section></div>`;
     const catKeys = Object.keys(s.cat).sort((a, b) => s.cat[b] - s.cat[a]);
     const mx = catKeys.length ? s.cat[catKeys[0]] : 1;
@@ -235,7 +241,7 @@ views.previstos = {
 
 views.historico = {
   mount(el) {
-    el.innerHTML = `<p class="mut" style="margin:0">Registro automático de quem criou, editou, moveu ou excluiu cada coisa. O histórico não pode ser editado nem apagado, nem pelo app.</p><div class="toolbar"><select id="hu" aria-label="Filtrar por pessoa"></select><select id="he" aria-label="Filtrar por tipo"><option value="">Todos os tipos</option>${[['car', 'Carros'], ['expense', 'Gastos'], ['planned', 'Previstos'], ['receipt', 'Recebimentos'], ['settings', 'Ajustes'], ['user', 'Usuários']].map((e) => `<option value="${e[0]}"${S.ui.he === e[0] ? ' selected' : ''}>${e[1]}</option>`).join('')}</select></div><div id="list" class="log"></div>`;
+    el.innerHTML = `<p class="mut" style="margin:0">Registro automático de quem criou, editou, moveu ou excluiu cada coisa. O histórico não pode ser editado nem apagado, nem pelo app.</p><div class="toolbar"><select id="hu" aria-label="Filtrar por pessoa"></select><select id="he" aria-label="Filtrar por tipo"><option value="">Todos os tipos</option>${[['car', 'Carros'], ['expense', 'Gastos'], ['planned', 'Previstos'], ['receipt', 'Recebimentos'], ['loan', 'Empréstimos'], ['payable', 'Contas a pagar'], ['settings', 'Ajustes'], ['user', 'Usuários']].map((e) => `<option value="${e[0]}"${S.ui.he === e[0] ? ' selected' : ''}>${e[1]}</option>`).join('')}</select></div><div id="list" class="log"></div>`;
     $('#hu').onchange = function () { S.ui.hu = this.value; views.historico.paint(); };
     $('#he').onchange = function () { S.ui.he = this.value; views.historico.paint(); };
     this.paint();

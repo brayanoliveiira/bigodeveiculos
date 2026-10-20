@@ -149,3 +149,16 @@ test('período e CSV', () => {
   const csv = R.toCsv([{ k: 'a', label: 'Nome' }, { k: 'b', label: 'Valor' }, { k: 'c', label: 'Data', date: true }], [{ a: 'Gol; "1.0"', b: 1234.5, c: '2026-10-05' }]);
   assert.equal(csv, 'Nome;Valor;Data\r\n"Gol; ""1.0""";1234,5;05/10/2026');
 });
+
+test('juros de empréstimos nos relatórios: lucro por mês, por sócio e visão geral', () => {
+  const cars = [{ id: 1, name: 'Gol', entT: 20000, status: 'Vendido', vvenda: 30000, dvenda: '2026-10-10' }];
+  const D = C.compute(cars, [], [], { meta: 0.1 }, '2026-12-01', [], [], []);
+  const J = { total: 3000, pagoA: 3000, pagoB: 0, porMes: { '2026-10': 1000, '2026-11': 2000 } };
+  const lm = R.lucroMensal(D, '', '', J);
+  assert.deepEqual(lm.rows.map((r) => [r.mes, r.lucro, r.juros, r.liq]), [['2026-10', 10000, 1000, 9000], ['2026-11', 0, 2000, -2000]]);
+  assert.equal(lm.total.liq, 7000); assert.equal(lm.total.liqA, 5000 - 1500);
+  const s = R.porSocio(D, [], '', '', J);
+  assert.equal(s.A.vendidos.lucLiq, 3500); assert.equal(s.B.vendidos.lucLiq, 3500);
+  assert.equal(s.A.saldo - R.porSocio(D, [], '', '').A.saldo, 3000 - 1500);
+  assert.equal(R.visaoGeral(D, [], '2026-12-01', { meta: 0.1, alerta: 45 }, '', '', J).lucroLiq, 7000);
+});

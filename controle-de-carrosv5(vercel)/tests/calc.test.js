@@ -125,3 +125,90 @@ t('consignado vendido com carro na troca que fica com o dono: comissão normal, 
   const S2 = C.summary(D, [], [], SET, HOJE, 2026);
   assert.equal(S2.estoque, 0);
 });
+
+test('empréstimo com juros mensais: juros todo mês e devolução no vencimento', () => {
+  const p = C.loanPlan({ valor: 57000, data: '2026-08-15', modo: 'Juros mensais', jurosMes: 2000, venc: '2026-12-15' });
+  assert.deepEqual(p.map((x) => [x.tipo, x.due, x.valor]), [
+    ['Juros', '2026-09-15', 2000], ['Juros', '2026-10-15', 2000], ['Juros', '2026-11-15', 2000], ['Juros', '2026-12-15', 2000], ['Devolução', '2026-12-15', 57000]]);
+  // juros em %: 3% de 10.000 = 300 por mês; devolução fora do dia do empréstimo ainda paga o juros daquele mês
+  const q = C.loanPlan({ valor: 10000, data: '2026-01-10', modo: 'Juros mensais', taxaMes: 0.03, venc: '2026-03-20' });
+  assert.deepEqual(q.map((x) => [x.tipo, x.due, x.valor]), [['Juros', '2026-02-10', 300], ['Juros', '2026-03-10', 300], ['Devolução', '2026-03-20', 10000]]);
+  assert.deepEqual(C.loanPlan({ valor: 1000, data: '2026-01-10', modo: 'Juros mensais', jurosMes: 10 }), []); // sem vencimento
+});
+
+test('empréstimo parcelado: tabela Price e sem juros com soma exata', () => {
+  const p = C.loanPlan({ valor: 20000, data: '2026-10-20', modo: 'Parcelado', taxaMes: 0.058, nParc: 2 });
+  assert.deepEqual(p.map((x) => [x.label, x.due, x.valor]), [['1/2', '2026-11-20', 10878.17], ['2/2', '2026-12-20', 10878.17]]);
+  const z = C.loanPlan({ valor: 1000, data: '2026-01-31', modo: 'Parcelado', nParc: 3, venc: '2026-02-28' });
+  assert.deepEqual(z.map((x) => [x.due, x.valor]), [['2026-02-28', 333.33], ['2026-03-28', 333.33], ['2026-04-28', 333.34]]);
+});
+
+test('contas a pagar: divisão entre sócios, atrasos, juros pagos e itens de carro ou empréstimo excluído', () => {
+  const loans = [{ id: 1, valor: 57000, modo: 'Juros mensais', jurosMes: 2000 }, { id: 2, valor: 20000, modo: 'Parcelado', taxaMes: 0.058, nParc: 2 }, { id: 3, valor: 5, modo: 'Parcelado', deleted: true }];
+  const cars = [{ id: 10, name: 'Gol' }, { id: 11, name: 'Velho', deleted: true }];
+  const pay = [
+    { id: 1, loanId: 1, tipo: 'Juros', due: '2026-09-15', valor: 2000, status: 'Pago' },
+    { id: 2, loanId: 1, tipo: 'Juros', due: '2026-10-15', valor: 2000, status: 'Pendente' }, // atrasado
+    { id: 3, loanId: 1, tipo: 'Devolução', due: '2026-12-15', valor: 57000, status: 'Pendente', quem: 'A' },
+    { id: 4, loanId: 2, tipo: 'Parcela', due: '2026-11-20', valor: 10878.17, status: 'Pago' },
+    { id: 5, loanId: 2, tipo: 'Parcela', due: '2026-12-20', valor: 10878.17, status: 'Pendente', quem: 'B' },
+    { id: 6, carId: 10, tipo: 'Parcela', due: '2026-11-01', valor: 30000, status: 'Pendente' },
+    { id: 7, carId: 11, tipo: 'Parcela', due: '2026-11-01', valor: 999, status: 'Pendente' },
+    { id: 8, loanId: 3, tipo: 'Parcela', due: '2026-11-01', valor: 999, status: 'Pendente' },
+    { id: 9, carId: 10, tipo: 'Parcela', due: '2026-11-01', valor: 999, status: 'Pendente', deleted: true },
+  ];
+  const s = C.debts(pay, loans, cars, HOJE);
+  near(s.total, 2000 + 57000 + 10878.17 + 30000, 'total a pagar');
+  near(s.A, 1000 + 57000 + 15000, 'A'); near(s.B, 1000 + 10878.17 + 15000, 'B');
+  near(s.atrasado, 2000, 'atrasado');
+  near(s.porLoan[1].juros, 4000, 'juros do empréstimo 1 (2 meses)');
+  near(s.porLoan[2].juros, 1756.34, 'juros do parcelado');
+  near(s.porLoan[2].jurosPagos, 878.17, 'metade dos juros já pagos');
+  near(s.jurosPagos, 2000 + 878.17, 'juros pagos no total');
+  near(s.jurosMes, 2000, 'juros por mês dos empréstimos em aberto');
+  assert.equal(s.porCar[10].falta, 30000); assert.equal(s.porCar[11], undefined); assert.equal(s.porLoan[3], undefined);
+  assert.equal(s.porLoan[1].prox, '2026-10-15'); assert.equal(s.porLoan[2].quitado, false);
+});
+
+test('rastreio do empréstimo: Kombi vendida com Celta na troca, até virar dinheiro', () => {
+  const kombi = { id: 1, name: 'Kombi', status: 'Em estoque' }, celta = { id: 2, name: 'Celta', origemId: 1, status: 'Em estoque' };
+  let t = C.loanTrail(1, [kombi]);
+  assert.deepEqual(t.holders.map((c) => c.name), ['Kombi']); assert.equal(t.emDinheiro, false);
+  kombi.status = 'Vendido'; kombi.dvenda = '2026-11-01';
+  t = C.loanTrail(1, [kombi, celta]);
+  assert.deepEqual(t.path.map((c) => c.name), ['Kombi', 'Celta']); assert.deepEqual(t.holders.map((c) => c.name), ['Celta']);
+  celta.status = 'Vendido'; celta.dvenda = '2026-12-05';
+  t = C.loanTrail(1, [kombi, celta]);
+  assert.equal(t.emDinheiro, true); assert.equal(t.ultimaVenda, '2026-12-05');
+  // troca ignorada (ex.: ficou com o dono do consignado) não segura o dinheiro; carro excluído some do rastreio
+  const gol = { id: 3, name: 'Gol', origemId: 2, status: 'Em estoque' };
+  assert.equal(C.loanTrail(1, [kombi, celta, gol], (c) => c.id === 3).emDinheiro, true);
+  assert.deepEqual(C.loanTrail(1, [kombi, celta, gol]).holders.map((c) => c.name), ['Gol']);
+  assert.equal(C.loanTrail(9, [kombi]), null);
+});
+
+test('juros pagos saem do lucro: metade de cada sócio, quem pagou do bolso recebe de volta', () => {
+  const loans = [{ id: 1, valor: 57000, modo: 'Juros mensais', jurosMes: 2000 }, { id: 2, valor: 20000, modo: 'Parcelado' }];
+  const pay = [
+    { loanId: 1, tipo: 'Juros', due: '2026-09-15', paidAt: '2026-09-15', valor: 2000, status: 'Pago', quem: 'A' },
+    { loanId: 1, tipo: 'Juros', due: '2026-10-15', paidAt: '2026-10-16', valor: 2000, status: 'Pago' },
+    { loanId: 1, tipo: 'Juros', due: '2026-11-15', valor: 2000, status: 'Pendente' },
+    { loanId: 1, tipo: 'Devolução', due: '2026-12-15', valor: 57000, status: 'Pago', paidAt: '2026-12-15' }, // devolução não é juros
+    { loanId: 2, tipo: 'Parcela', due: '2026-11-20', paidAt: '2026-11-20', valor: 10878.17, status: 'Pago', quem: 'B' },
+    { loanId: 2, tipo: 'Parcela', due: '2026-12-20', valor: 10878.17, status: 'Pendente' },
+  ];
+  const j = C.jurosPagos(pay, loans);
+  near(j.total, 4000 + 878.17, 'juros pagos');
+  near(j.pagoA, 2000 + 1000, 'A tirou do bolso'); near(j.pagoB, 1000 + 878.17, 'B tirou do bolso');
+  near(j.porMes['2026-10'], 2000, 'outubro'); near(j.porMes['2026-11'], 878.17, 'novembro');
+  near(C.jurosPagos(pay, loans, '2026-10-01', '2026-10-31').total, 2000, 'só outubro');
+
+  const cars = [{ id: 1, name: 'Gol', entT: 20000, status: 'Vendido', vvenda: 30000, dvenda: '2026-10-10' }];
+  const D = C.compute(cars, [], [], { meta: 0.1 }, HOJE, [], [], []);
+  const sem = C.summary(D, [], [], { meta: 0.1, alerta: 45 }, HOJE, 2026), com = C.summary(D, [], [], { meta: 0.1, alerta: 45 }, HOJE, 2026, j);
+  near(com.lucroLiq, 10000 - j.total, 'lucro líquido');
+  near(com.acerto[0].luc, sem.acerto[0].luc - j.total / 2, 'metade do juros sai do lucro de A');
+  // A pagou mais juros do bolso que a metade dele: B passa a dever essa diferença a A
+  near(com.acerto[0].saldo - sem.acerto[0].saldo, j.pagoA - j.total / 2, 'acerto devolve a A');
+  near(com.months[9].luc, sem.months[9].luc - 2000, 'outubro no gráfico');
+});

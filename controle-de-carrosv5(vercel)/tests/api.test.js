@@ -300,3 +300,35 @@ test('montadora: nomes padronizados e tirados do nome do carro', async () => {
   assert.equal(marcaOf({ name: 'VW Gol 1.0 2016' }), 'Volkswagen'); assert.equal(marcaOf({ name: 'Land Rover Evoque' }), 'Land Rover');
   assert.equal(marcaOf({ name: 'Honda Civic', marca: 'HONDA' }), 'Honda'); assert.equal(marcaOf({ name: '' }), 'Sem montadora');
 });
+
+test('empréstimos e contas a pagar: cadastro, programação, troca das pendentes e validações', async () => {
+  const adm = client();
+  await adm('POST', '/api/login', { username: 'brayan', password: 'senha-do-brayan' });
+  const bad = await adm('POST', '/api/loans', { credor: 'Mãe', data: '2026-08-15', valor: 57000, modo: 'Juros mensais', jurosMes: 2000 });
+  assert.equal(bad.status, 400); assert.match(bad.json.error || bad.json.message || '', /devolvido/);
+  const l = (await adm('POST', '/api/loans', { credor: 'Mãe', data: '2026-08-15', valor: 57000, modo: 'Juros mensais', jurosMes: 2000, venc: '2026-12-15' })).json.item;
+  const parts = [{ label: 'Juros set/26', tipo: 'Juros', due: '2026-09-15', valor: 2000 }, { label: 'Devolução', tipo: 'Devolução', due: '2026-12-15', valor: 57000, quem: 'A' }];
+  assert.equal((await adm('POST', '/api/payables/plan', { loanId: l.id, parts })).status, 201);
+  let pays = (await adm('GET', '/api/data')).json.payables.filter((p) => p.loanId === l.id && !p.deleted);
+  assert.equal(pays.length, 2); assert.ok(pays.every((p) => p.origem === 'Empréstimo' && p.credor === 'Mãe'));
+  // pagar o juros e refazer: a paga fica, as pendentes são trocadas
+  const juros = pays.find((p) => p.tipo === 'Juros');
+  assert.equal((await adm('PATCH', `/api/payables/${juros.id}`, { status: 'Pago' })).status, 400); // sem data
+  assert.equal((await adm('PATCH', `/api/payables/${juros.id}`, { status: 'Pago', paidAt: '2026-09-15' })).json.item.status, 'Pago');
+  await adm('POST', '/api/payables/plan', { loanId: l.id, replace: true, parts: [{ label: 'Devolução', tipo: 'Devolução', due: '2027-01-15', valor: 57000 }] });
+  pays = (await adm('GET', '/api/data')).json.payables.filter((p) => p.loanId === l.id && !p.deleted);
+  assert.deepEqual(pays.map((p) => [p.tipo, p.due, p.status]).sort(), [['Devolução', '2027-01-15', 'Pendente'], ['Juros', '2026-09-15', 'Pago']]);
+
+  // carro comprado a prazo: 60 dias, só um sócio paga
+  const car = (await adm('POST', '/api/cars', { name: 'Corolla', dcompra: '2026-10-01', entT: 80000 })).json.item;
+  assert.equal((await adm('POST', '/api/payables/plan', { carId: car.id, parts: [{ label: '60 dias', tipo: 'Parcela', due: '2026-11-30', valor: 80000, forma: 'Pix', quem: 'B', credor: 'João' }] })).status, 201);
+  const cp = (await adm('GET', '/api/data')).json.payables.find((p) => p.carId === car.id);
+  assert.equal(cp.origem, 'Carro'); assert.equal(cp.quem, 'B'); assert.equal(cp.forma, 'Pix');
+  assert.equal((await adm('POST', '/api/payables/plan', { carId: 999999, parts })).status, 404);
+  assert.equal((await adm('POST', '/api/payables/plan', { carId: car.id, parts: [{ due: '2026-11-30', valor: 0 }] })).status, 400);
+  assert.equal((await adm('POST', '/api/payables', { origem: 'Carro', due: '2026-11-30', valor: 10 })).status, 400); // sem carro
+  // histórico registra a programação
+  const audit = (await adm('GET', '/api/audit?limit=50')).json.audit;
+  assert.ok(audit.some((a) => a.entity === 'loan' && a.action === 'programou'));
+  assert.ok(audit.some((a) => a.entity === 'car' && a.action === 'programou a pagar'));
+});

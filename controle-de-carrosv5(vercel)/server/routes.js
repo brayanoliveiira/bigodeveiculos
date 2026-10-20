@@ -34,7 +34,7 @@ function register(router, { db, cfg, limiter }) {
     await db.get('SELECT 1 AS ok');
     return { ok: true };
   });
-  router.add('GET', '/api/config', {}, async () => ({ lists: { locs: lists.locs, cats: lists.cats, status: lists.status, pstatus: lists.pstatus, rstatus: lists.rstatus, divis: lists.divis, roles: lists.roles }, placa: !!cfg.placaToken || !!cfg.placaSite || !!cfg.placaFree || !!(cfg.apibrasilBearer && cfg.apibrasilDevice) }));
+  router.add('GET', '/api/config', {}, async () => ({ lists: { locs: lists.locs, cats: lists.cats, status: lists.status, pstatus: lists.pstatus, rstatus: lists.rstatus, divis: lists.divis, roles: lists.roles, loanModes: lists.loanModes, origens: lists.origens, ptipos: lists.ptipos, paystatus: lists.paystatus, formasPag: lists.formasPag }, placa: !!cfg.placaToken || !!cfg.placaSite || !!cfg.placaFree || !!(cfg.apibrasilBearer && cfg.apibrasilDevice) }));
 
   router.add('POST', '/api/login', {}, async (ctx) => {
     const username = String(ctx.body.username || '').trim();
@@ -192,6 +192,11 @@ function register(router, { db, cfg, limiter }) {
       return { item, fipeAuto: { ok: false, msg: e && e.message ? e.message : 'Consulta da placa falhou.' } };
     }
   }
+  router.add('POST', '/api/payables/plan', { role: 'write' }, async (ctx) => {
+    const r = await S.schedulePayables(db, ctx.user, ctx.body || {});
+    ctx.status = 201;
+    return r;
+  });
   router.add('POST', '/api/:entity', { role: 'write' }, async (ctx) => {
     const item = await S.createItem(db, ctx.user, entity(ctx), ctx.body);
     ctx.status = 201;

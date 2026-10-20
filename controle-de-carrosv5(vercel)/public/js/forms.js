@@ -5,7 +5,7 @@ import { S, LISTS, names, liveCars } from './state.js';
 import { api } from './api.js';
 
 installMoneyMask();
-const hooks = { reload: async () => {} };
+export const hooks = { reload: async () => {} };
 export const setHooks = (h) => Object.assign(hooks, h);
 
 const partnerOpts = () => [['A', names().A], ['B', names().B]];
@@ -15,6 +15,8 @@ const isConsig = (v) => !!String(v.dono || '').trim();
 const notConsig = (v) => !isConsig(v);
 const notSold = (v) => !isSold(v);
 const temHist = (v) => !!(v.leilao || v.sinistro);
+const isJurosMes = (v) => v.modo === 'Juros mensais';
+const isParcelado = (v) => v.modo === 'Parcelado';
 // 'Entregue' é posto pelo servidor quando o carro é vendido: não aparece para escolher.
 const locOpts = () => LISTS.locs.filter((l) => l !== 'Entregue').map((o) => [o, o]);
 
@@ -87,6 +89,25 @@ const F = {
     { k: 'quem', label: 'Quem pagou o dono', t: 'sel', opts: partnerOpts, blank: 'Quem ficou com o dinheiro da venda (padrão)', full: true },
     { k: 'obs', label: 'Observação', t: 'text', full: true },
   ], defaults: () => ({ date: today() }) },
+  loan: { col: 'loans', title: 'empréstimo', fields: () => [
+    { k: 'credor', label: 'De quem pegamos', t: 'text', req: true, hint: 'Ex.: Mãe, Nubank, Banco Inter.' }, { k: 'valor', label: 'Valor emprestado', t: 'money', req: true },
+    { k: 'data', label: 'Data em que o dinheiro entrou', t: 'date', req: true }, { k: 'carId', label: 'Carro comprado com esse dinheiro', t: 'car', blank: 'Nenhum / vários' },
+    { k: 'modo', label: 'Como vamos pagar', t: 'sel', opts: listOpts('loanModes'), req: true, full: true, hint: 'Juros mensais: paga só os juros todo mês e devolve o valor inteiro no vencimento. Parcelado: parcelas iguais com juros (ex.: Nubank em 2x).' },
+    { k: 'jurosMes', label: 'Juros por mês em R$', t: 'money', showIf: isJurosMes, hint: 'Ex.: R$ 2.000,00. Ou preencha a % ao lado.' },
+    { k: 'taxaMes', label: 'Juros por mês em %', t: 'pct', hint: 'Ex.: 5,8. No parcelado, calcula as parcelas (tabela Price).' },
+    { k: 'nParc', label: 'Número de parcelas', t: 'int', showIf: isParcelado },
+    { k: 'venc', label: 'Vencimento', t: 'date', hint: 'Juros mensais: quando devolvemos o valor. Parcelado: 1º vencimento (vazio = 1 mês depois).' },
+    { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada (padrão)' },
+    { k: 'obs', label: 'Finalidade (para que foi o dinheiro)', t: 'text', full: true, hint: 'Ex.: comprar a Kombi. Com o carro escolhido acima, o app acompanha as trocas: se a Kombi for vendida e entrar um Celta, o dinheiro passa a estar no Celta.' },
+  ], defaults: () => ({ data: today(), modo: 'Juros mensais' }) },
+  payable: { col: 'payables', title: 'conta a pagar', fields: () => [
+    { k: 'label', label: 'Parcela', t: 'text' }, { k: 'due', label: 'Vencimento', t: 'date', req: true },
+    { k: 'valor', label: 'Valor', t: 'money', req: true }, { k: 'forma', label: 'Forma de pagamento', t: 'sel', opts: listOpts('formasPag'), blank: 'Não informada' },
+    { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada (padrão)' }, { k: 'credor', label: 'A quem pagamos', t: 'text' },
+    { k: 'status', label: 'Situação', t: 'sel', opts: listOpts('paystatus'), req: true },
+    { k: 'paidAt', label: 'Pago em', t: 'date', showIf: (v) => v.status === 'Pago' },
+    { k: 'obs', label: 'Observação', t: 'text', full: true },
+  ] },
   move: { col: 'cars', title: 'Mover carro', fields: () => [
     { k: 'loc', label: 'Onde está agora', t: 'sel', opts: locOpts, req: true, full: true },
     { k: 'locdet', label: 'Qual oficina / funilaria', t: 'text', full: true },
@@ -239,6 +260,8 @@ export function openForm(mode, existing, opts = {}) {
     }
     if (mode === 'car' && send.status === 'Vendido' && !send.dvenda) send.dvenda = today(); // sem data informada, vale hoje
     if (mode === 'receipt') { if (send.status === 'Pendente') send.paidAt = null; else if (!send.paidAt) send.paidAt = today(); }
+    if (mode === 'payable') { if (send.status === 'Pendente') send.paidAt = null; else if (!send.paidAt) send.paidAt = today(); }
+    if (mode === 'loan' && send.modo === 'Juros mensais' && send.jurosMes == null && send.taxaMes == null) { $('#ferr').textContent = 'Informe os juros por mês, em R$ ou em %.'; return; }
     if (opts.extra) Object.assign(send, opts.extra);
     saving = true; $('#fsave').disabled = true;
     try {

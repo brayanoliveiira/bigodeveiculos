@@ -26,7 +26,9 @@ var Reports = (function () {
   };
 
   /* 1. Por sócio: quanto cada um tem investido (em estoque e já vendido), recebeu, lucro e saldo. */
-  function porSocio(D, expenses, from, to) {
+  /* juros (opcional) = Calc.jurosPagos do mesmo período: metade sai do lucro de cada sócio; quem pagou do bolso recebe de volta no saldo. */
+  function porSocio(D, expenses, from, to, juros) {
+    var J = juros ? juros.total : 0;
     var res = {};
     ['A', 'B'].forEach(function (p) {
       var e = { n: 0, entrada: 0, gastos: 0, inv: 0 }, v = { n: 0, inv: 0, luc: 0, rec: 0, recHoje: 0, aReceber: 0, rep: 0, repHoje: 0 };
@@ -43,27 +45,33 @@ var Reports = (function () {
         v.rep += A ? d.repA : d.repB; v.repHoje += A ? d.repPagoA : d.repPagoB; // repasses a donos de carros consignados
       });
       var gastoPeriodo = sumBy((expenses || []).filter(function (x) { return !x.deleted && D[x.carId] && x.quem === p && inRange(x.date, from, to); }), function (x) { return N0(x.valor); });
+      var jp = juros ? (p === 'A' ? juros.pagoA : juros.pagoB) : 0;
+      v.juros = J / 2; v.jurosPago = jp; v.lucLiq = v.luc - J / 2;
       res[p] = {
         estoque: e, vendidos: v, totalInvestido: e.inv + v.inv, gastoPeriodo: gastoPeriodo,
-        roi: v.inv > 0 ? v.luc / v.inv : null,
-        saldo: v.inv + v.luc - (v.rec - v.rep), saldoHoje: v.inv + v.luc - (v.recHoje - v.repHoje),
+        roi: v.inv > 0 ? v.lucLiq / v.inv : null,
+        saldo: v.inv + jp + v.lucLiq - (v.rec - v.rep), saldoHoje: v.inv + jp + v.lucLiq - (v.recHoje - v.repHoje),
       };
     });
     return res;
   }
 
   /* 2. Lucro por mês, separado por investidor. */
-  function lucroMensal(D, from, to) {
+  /* juros (opcional) = Calc.jurosPagos do mesmo período: entra no mês em que foi pago e sai do lucro (metade de cada sócio). */
+  function lucroMensal(D, from, to, juros) {
     var rows = {}, sold = soldIn(D, from, to);
+    var blank = function (k) { return { mes: k, n: 0, fat: 0, custo: 0, lucro: 0, lucA: 0, lucB: 0, perdeu: 0, juros: 0 }; };
     sold.forEach(function (d) {
-      var k = mkey(d.c.dvenda), r = rows[k] || (rows[k] = { mes: k, n: 0, fat: 0, custo: 0, lucro: 0, lucA: 0, lucB: 0, perdeu: 0 });
+      var k = mkey(d.c.dvenda), r = rows[k] || (rows[k] = blank(k));
       r.n++; r.fat += N0(d.c.vvenda); r.custo += d.custo; r.lucro += d.lucro; r.lucA += d.lucA; r.lucB += d.lucB; r.perdeu += d.perdeu || 0;
     });
-    var months = monthsBetween(Object.keys(rows)), out = months.map(function (m) { return rows[m] || { mes: m, n: 0, fat: 0, custo: 0, lucro: 0, lucA: 0, lucB: 0, perdeu: 0 }; });
+    Object.keys((juros && juros.porMes) || {}).forEach(function (k) { (rows[k] || (rows[k] = blank(k))).juros += juros.porMes[k]; });
+    var months = monthsBetween(Object.keys(rows)), out = months.map(function (m) { return rows[m] || blank(m); });
     if (rows['']) out.push(rows['']);
-    out.forEach(function (r) { r.margem = r.custo > 0 ? r.lucro / r.custo : null; });
-    var tot = { mes: 'Total', n: 0, fat: 0, custo: 0, lucro: 0, lucA: 0, lucB: 0, perdeu: 0 };
-    out.forEach(function (r) { ['n', 'fat', 'custo', 'lucro', 'lucA', 'lucB', 'perdeu'].forEach(function (k) { tot[k] += r[k]; }); });
+    out.forEach(function (r) { r.margem = r.custo > 0 ? r.lucro / r.custo : null; r.liq = r.lucro - r.juros; r.liqA = r.lucA - r.juros / 2; r.liqB = r.lucB - r.juros / 2; });
+    var tot = blank('Total');
+    out.forEach(function (r) { ['n', 'fat', 'custo', 'lucro', 'lucA', 'lucB', 'perdeu', 'juros'].forEach(function (k) { tot[k] += r[k]; }); });
+    tot.liq = tot.lucro - tot.juros; tot.liqA = tot.lucA - tot.juros / 2; tot.liqB = tot.lucB - tot.juros / 2;
     tot.margem = tot.custo > 0 ? tot.lucro / tot.custo : null;
     return { rows: out, total: tot };
   }
@@ -218,7 +226,7 @@ var Reports = (function () {
   }
 
   /* 9. Visão geral do período. */
-  function visaoGeral(D, expenses, today, settings, from, to) {
+  function visaoGeral(D, expenses, today, settings, from, to, juros) {
     var sold = soldIn(D, from, to), fat = sumBy(sold, function (d) { return N0(d.c.vvenda); }), lucro = sumBy(sold, function (d) { return d.lucro; }), custo = sumBy(sold, function (d) { return d.custo; });
     var diasN = sold.filter(function (d) { return d.dias !== null; }), est = estoque(D, settings), rec = recebiveis(D, today);
     return {
@@ -226,7 +234,7 @@ var Reports = (function () {
       lucroMedio: sold.length ? lucro / sold.length : null, diasMedio: diasN.length ? sumBy(diasN, function (d) { return d.dias; }) / diasN.length : null,
       perdeu: sumBy(sold, function (d) { return d.perdeu || 0; }), prejuizo: sold.filter(function (d) { return d.lucro < 0; }).length,
       capitalEstoque: est.total.custo, estoqueN: est.total.n, projEstoque: est.total.proj, aReceber: rec.total + rec.semProgramar, atrasado: rec.atrasado,
-      gastos: gastos(D, expenses, from, to).total,
+      gastos: gastos(D, expenses, from, to).total, juros: juros ? juros.total : 0, lucroLiq: lucro - (juros ? juros.total : 0),
     };
   }
 

@@ -34,6 +34,22 @@ Migrations `008_fase1.sql` e `pg/003_fase1.sql`: colunas `marca`, `leilao`, `sin
 | 2.4 | Forma de pagamento dos gastos | M | Colunas `forma` (Pix à vista, Dinheiro, Débito, Crédito à vista, Crédito parcelado, Boleto/a prazo), `parcelas` e `venc`. Relatório de gastos por forma. Gasto parcelado ou a prazo entra em "Contas a pagar" (2.5). |
 | 2.5 | Carros (e gastos) a pagar | G | Entidade nova `payables` (carro, origem `compra` ou `gasto`, vencimento, valor, status, quem paga, forma), com pagamentos parciais como os recebimentos. Compra a prazo (normalmente 60 dias): cada sócio paga metade no vencimento, tenha o carro sido vendido ou não. Entrada e investido contam já na compra (50/50, ou o que estiver em `ovrA`/`ovrB`); a conta a pagar mostra quanto cada sócio ainda precisa desembolsar e quando. Aba "A pagar" com vencidos, próximos 7 e 30 dias, e total por sócio. O carro vendido ou trocado continua mostrando a dívida até quitar. O Resumo ganha "Caixa projetado = a receber − a pagar". |
 
+### Feito em 20/10/2026: Empréstimos e Veículos a pagar (item 2.5)
+
+- Tabelas `loans` e `payables` (migrations `009_dividas.sql` e `pg/004_dividas.sql`).
+- **Empréstimos:** de quem, valor, data, carro (opcional), quem paga (os dois ou um só).
+  - *Juros mensais:* juros em R$ ou % todo mês e devolução do valor no vencimento.
+  - *Parcelado:* tabela Price com % ao mês.
+  - Parcelas geradas sozinhas. "Refazer parcelas pendentes" mantém as pagas.
+- **Veículos a pagar:** à vista, a prazo (30/45/60/90/120 dias) ou parcelado, com entrada, forma, a quem pagar e quem paga. A dívida continua visível depois que o carro é vendido ou trocado.
+- Resumo: alerta de conta atrasada e total a pagar. Card do carro: etiqueta "A pagar".
+- **Juros saem do lucro:** juros de empréstimo é custo da sociedade, não de um carro.
+  - Lucro líquido = lucro dos carros − juros pagos, no mês em que foram pagos.
+  - Metade do juros sai do lucro de cada sócio. Quem pagou do bolso recebe de volta no acerto.
+  - No parcelado, só a parte de juros de cada parcela conta.
+  - O lucro projetado do estoque desconta os juros que ainda faltam pagar.
+- **Rastreio do dinheiro:** o empréstimo tem uma finalidade e o carro comprado com ele. O app segue as trocas (Kombi vendida → Celta que entrou na troca → …). O card do carro que "carrega" o dinheiro mostra "Dinheiro de empréstimo"; quando a cadeia termina numa venda sem carro de troca, aparece "Virou dinheiro" e a marca some.
+
 ## Fase 3: controle do dia a dia
 
 | # | Item | Tamanho | Como |
