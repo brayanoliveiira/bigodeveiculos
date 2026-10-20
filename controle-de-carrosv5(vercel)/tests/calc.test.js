@@ -212,3 +212,27 @@ test('juros pagos saem do lucro: metade de cada sócio, quem pagou do bolso rece
   near(com.acerto[0].saldo - sem.acerto[0].saldo, j.pagoA - j.total / 2, 'acerto devolve a A');
   near(com.months[9].luc, sem.months[9].luc - 2000, 'outubro no gráfico');
 });
+
+test('quitação prevista: informada ou a última parcela; juros depois dela não contam como a pagar', () => {
+  const loans = [{ id: 1, valor: 30000, modo: 'Juros mensais', jurosMes: 1000, quitPrev: '2026-11-20' }, { id: 2, valor: 1000, modo: 'Parcelado' }];
+  const pay = [
+    { loanId: 1, tipo: 'Juros', due: '2026-11-15', valor: 1000, status: 'Pendente' },
+    { loanId: 1, tipo: 'Juros', due: '2026-12-15', valor: 1000, status: 'Pendente' }, // depois da quitação prevista
+    { loanId: 1, tipo: 'Devolução', due: '2026-12-15', valor: 30000, status: 'Pendente' },
+    { loanId: 2, tipo: 'Parcela', due: '2026-09-01', valor: 600, status: 'Pendente' },
+    { loanId: 2, tipo: 'Parcela', due: '2026-10-01', valor: 600, status: 'Pendente' },
+  ];
+  const s = C.debts(pay, loans, [], HOJE);
+  assert.equal(s.porLoan[1].quitPrev, '2026-11-20'); assert.equal(s.porLoan[1].quitPrevManual, true);
+  assert.equal(s.porLoan[2].quitPrev, '2026-10-01'); assert.equal(s.porLoan[2].quitPrevManual, false);
+  assert.equal(s.porLoan[2].quitAtrasada, true); assert.equal(s.porLoan[1].quitAtrasada, false); assert.equal(s.quitAtrasadas, 1);
+  near(s.jurosPend, 1000 + 200, 'juros a pagar: 1 mês do primeiro + juros do parcelado');
+});
+
+test('juros a partir da %: reais inteiros, arredondado para cima', () => {
+  assert.equal(C.jurosDaTaxa(57000, 0.03), 1710);
+  assert.equal(C.jurosDaTaxa(33333, 0.033), 1100); // 1.099,99 -> 1.100
+  assert.equal(C.jurosDaTaxa(20000, 0.0585), 1170);
+  assert.equal(C.jurosDaTaxa(10001, 0.03), 301); // 300,03 -> 301
+  assert.equal(C.loanPlan({ valor: 10001, data: '2026-01-10', modo: 'Juros mensais', taxaMes: 0.03, venc: '2026-02-10' })[0].valor, 301);
+});

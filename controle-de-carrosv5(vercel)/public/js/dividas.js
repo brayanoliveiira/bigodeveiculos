@@ -19,11 +19,11 @@ const PARCELAS = [2, 3, 4, 5, 6, 8, 10, 12, 18, 24, 36, 48];
 function condicao(l, g) {
   const tx = Calc.num(l.taxaMes);
   if (l.modo === 'Juros mensais') {
-    const j = Calc.num(l.jurosMes) != null ? Calc.num(l.jurosMes) : round2(Calc.num(l.valor) * (tx || 0));
-    return `Juros de ${brl(j)}/mês${tx != null && Calc.num(l.jurosMes) == null ? ` (${(tx * 100).toFixed(2).replace('.', ',')}%)` : ''} · devolve em ${dmy(l.venc)}`;
+    const v = Calc.num(l.valor), j = Calc.num(l.jurosMes) != null ? Calc.num(l.jurosMes) : Calc.jurosDaTaxa(v, tx);
+    return `Juros de ${brl(j)}/mês${v > 0 ? ` (${(j / v * 100).toFixed(1).replace('.', ',')}% a.m.)` : ''} · devolve em ${dmy(l.venc)}`;
   }
   const parc = g && g.itens.length ? g.itens.find((x) => x.tipo === 'Parcela') : null;
-  return `${l.nParc || 1}x${parc ? ' de ' + brl(Calc.num(parc.valor)) : ''}${tx ? ` · ${(tx * 100).toFixed(2).replace('.', ',')}% a.m.` : ' · sem juros'}`;
+  return `${l.nParc || 1}x${parc ? ' de ' + brl(Calc.num(parc.valor)) : ''}${tx ? ` · ${(tx * 100).toFixed(1).replace('.', ',')}% a.m.` : ' · sem juros'}`;
 }
 
 const carTxt = (c) => `${c.name}${c.placa ? ' · ' + c.placa : ''}`;
@@ -41,6 +41,13 @@ function trailHtml(l) {
   if (t.emDinheiro) h += `<div><span class="pill ok">Virou dinheiro${t.ultimaVenda ? ' em ' + dmy(t.ultimaVenda) : ''}</span></div>`;
   else if (t.holders.length && (t.holders.length > 1 || t.holders[0].id !== first.id)) h += `<div class="small">Agora em: <b>${t.holders.map((c) => esc(carTxt(c))).join(', ')}</b></div>`;
   return h;
+}
+
+/** Data prevista de quitação: a informada no empréstimo ou, sem ela, a da última parcela. */
+function quitHtml(g) {
+  if (!g || !g.quitPrev) return '—';
+  if (g.quitado) return `<span class="mut">${dmy(g.quitPrev)}</span>`;
+  return `${g.quitAtrasada ? `<span class="pill late">${dmy(g.quitPrev)}</span>` : dmy(g.quitPrev)}<div class="mut small">${g.quitPrevManual ? 'prevista' : 'última parcela'}</div>`;
 }
 
 function situacaoPill(g) {
@@ -75,7 +82,8 @@ views.emprestimos = {
     const prox = aberto.map((l) => G(l) && G(l).prox).filter(Boolean).sort()[0];
     let h = '<dl class="grid kpis" style="margin:0">' + K('Devemos em empréstimos', brl(falta), '', true) + K(`${nm('A')} paga`, brl(fA)) + K(`${nm('B')} paga`, brl(fB)) +
       K('Juros por mês (em aberto)', brl(DV.jurosMes)) + K('Juros já pagos', brl(aberto.concat(all.filter((l) => G(l) && G(l).quitado)).reduce((a, l) => a + (G(l) ? G(l).jurosPagos : 0), 0))) +
-      K('Atrasado', brl(atras), atras > 0.004 ? 'neg' : '') + K('Próximo vencimento', prox ? dmy(prox) : '—') + '</dl>';
+      K('Atrasado', brl(atras), atras > 0.004 ? 'neg' : '') + K('Próximo vencimento', prox ? dmy(prox) : '—') +
+      K('Última quitação prevista', (() => { const q = aberto.map((l) => G(l) && G(l).quitPrev).filter(Boolean).sort().pop(); return q ? dmy(q) : '—'; })()) + '</dl>';
     const rows = all.filter((l) => f === 'Todos' || (f === 'Quitados') === !!(G(l) && G(l).quitado))
       .sort((a, b) => String((G(a) && G(a).prox) || '9').localeCompare(String((G(b) && G(b).prox) || '9')) || String(b.data).localeCompare(String(a.data)));
     h += table([
@@ -88,6 +96,7 @@ views.emprestimos = {
       { label: 'Pago', r: true, get: (l) => brl(G(l) ? G(l).pago : 0) },
       { label: 'Falta', r: true, get: (l) => `<b>${brl(G(l) ? G(l).falta : 0)}</b>` },
       { label: 'Próximo', get: (l) => (G(l) && G(l).prox ? `${dmy(G(l).prox)}<div class="mut small">${brl(G(l).proxValor)}</div>` : '—') },
+      { label: 'Quitação prevista', get: (l) => quitHtml(G(l)) },
       { label: 'Situação', get: (l) => situacaoPill(G(l)) },
       { label: '', get: (l) => `<div class="row-acts"><button class="btn sm" data-act="dv-parc-loan" data-id="${l.id}">Parcelas</button>${S.canWrite ? `<button class="btn sm" data-act="dv-edit-loan" data-id="${l.id}">Editar</button><button class="btn sm" data-act="dv-del-loan" data-id="${l.id}">Excluir</button>` : ''}</div>` },
     ], rows, null, 'Nenhum empréstimo neste filtro.');
@@ -133,6 +142,7 @@ views.apagar = {
       { label: nm('A'), r: true, get: (x) => brl(x.g.A) },
       { label: nm('B'), r: true, get: (x) => brl(x.g.B) },
       { label: 'Próximo', get: (x) => (x.g.prox ? `${dmy(x.g.prox)}<div class="mut small">${brl(x.g.proxValor)}</div>` : '—') },
+      { label: 'Quitação', get: (x) => (x.g.fim ? (x.g.falta <= 0.004 ? `<span class="mut">${dmy(x.g.fim)}</span>` : dmy(x.g.fim)) : '—') },
       { label: 'Situação', get: (x) => situacaoPill({ ...x.g, quitado: x.g.falta <= 0.004 }) },
       { label: '', get: (x) => `<div class="row-acts"><button class="btn sm" data-act="dv-parc-car" data-id="${x.id}">Parcelas</button>${S.canWrite ? `<button class="btn sm" data-act="dv-new-cardebt" data-id="${x.id}">Acrescentar</button>` : ''}</div>` },
     ], rows, null, 'Nenhum veículo neste filtro.');
@@ -152,7 +162,7 @@ export function renderParcelas(owner) {
   const m = $('#modal');
   m.hidden = false;
   m.innerHTML = `<div class="sheet wide dv-sum"><h2>${title}</h2>` +
-    (isLoan ? `<p class="mut small" style="margin:0">${esc(l.modo)} · ${esc(condicao(l, g))} · quem paga: ${esc(quemTxt(l.quem))}</p>${l.obs ? `<p class="small" style="margin:0"><b>Finalidade:</b> ${esc(l.obs)}</p>` : ''}${l.carId != null ? `<div class="small">${trailHtml(l)}</div>` : ''}` : '') +
+    (isLoan ? `<p class="mut small" style="margin:0">${esc(l.modo)} · ${esc(condicao(l, g))} · quem paga: ${esc(quemTxt(l.quem))}${g && g.quitPrev ? ` · quitação prevista: ${dmy(g.quitPrev)}${g.quitPrevManual ? '' : ' (última parcela)'}` : ''}</p>${l.obs ? `<p class="small" style="margin:0"><b>Finalidade:</b> ${esc(l.obs)}</p>` : ''}${l.carId != null ? `<div class="small">${trailHtml(l)}</div>` : ''}` : '') +
     `<dl class="grid kpis" style="margin:0">${K('Total', brl(g ? g.total : 0))}${K('Pago', brl(g ? g.pago : 0))}${K('Falta', brl(g ? g.falta : 0), '', true)}${isLoan ? K('Juros total', brl(g ? g.juros : 0)) : ''}</dl>` +
     table([
       { label: 'Parcela', get: (p) => `<b>${esc(p.label || p.tipo || '—')}</b>${p.obs ? `<div class="mut small">${esc(p.obs)}</div>` : ''}` },

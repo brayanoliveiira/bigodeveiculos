@@ -93,10 +93,11 @@ const F = {
     { k: 'credor', label: 'De quem pegamos', t: 'text', req: true, hint: 'Ex.: Mãe, Nubank, Banco Inter.' }, { k: 'valor', label: 'Valor emprestado', t: 'money', req: true },
     { k: 'data', label: 'Data em que o dinheiro entrou', t: 'date', req: true }, { k: 'carId', label: 'Carro comprado com esse dinheiro', t: 'car', blank: 'Nenhum / vários' },
     { k: 'modo', label: 'Como vamos pagar', t: 'sel', opts: listOpts('loanModes'), req: true, full: true, hint: 'Juros mensais: paga só os juros todo mês e devolve o valor inteiro no vencimento. Parcelado: parcelas iguais com juros (ex.: Nubank em 2x).' },
-    { k: 'jurosMes', label: 'Juros por mês em R$', t: 'money', showIf: isJurosMes, hint: 'Ex.: R$ 2.000,00. Ou preencha a % ao lado.' },
-    { k: 'taxaMes', label: 'Juros por mês em %', t: 'pct', hint: 'Ex.: 5,8. No parcelado, calcula as parcelas (tabela Price).' },
+    { k: 'jurosMes', label: 'Juros por mês em R$', t: 'money', showIf: isJurosMes, hint: 'Ex.: R$ 2.000,00. A % ao lado é calculada sozinha.' },
+    { k: 'taxaMes', label: 'Juros por mês em %', t: 'pct', hint: 'Ex.: 5,8. Digitou a %? O valor em R$ é calculado sozinho. No parcelado, calcula as parcelas (tabela Price).' },
     { k: 'nParc', label: 'Número de parcelas', t: 'int', showIf: isParcelado },
     { k: 'venc', label: 'Vencimento', t: 'date', hint: 'Juros mensais: quando devolvemos o valor. Parcelado: 1º vencimento (vazio = 1 mês depois).' },
+    { k: 'quitPrev', label: 'Quitação prevista', t: 'date', hint: 'Quando vocês pretendem quitar tudo (ex.: ao vender o carro). Vazio = data da última parcela.' },
     { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada (padrão)' },
     { k: 'obs', label: 'Finalidade (para que foi o dinheiro)', t: 'text', full: true, hint: 'Ex.: comprar a Kombi. Com o carro escolhido acima, o app acompanha as trocas: se a Kombi for vendida e entrar um Celta, o dinheiro passa a estar no Celta.' },
   ], defaults: () => ({ data: today(), modo: 'Juros mensais' }) },
@@ -120,7 +121,7 @@ const valued = (mode) => F[mode].fields().filter((f) => f.k);
 function inputValue(f, v) {
   if (v == null) return '';
   if (f.t === 'money') return moneyField(v);
-  if (f.t === 'pct') return String(Math.round(v * 1000) / 10).replace('.', ',');
+  if (f.t === 'pct') return String(Math.round(v * 10000) / 100).replace('.', ',');
   return String(v);
 }
 
@@ -225,8 +226,23 @@ export function openForm(mode, existing, opts = {}) {
   m.oninput = (ev) => {
     const el = ev.target;
     if (el && el.id === 'f_placa') { const p = el.selectionStart; el.value = el.value.toUpperCase(); try { el.setSelectionRange(p, p); } catch { /* campo sem seleção */ } }
+    if (mode === 'loan' && el) syncJuros(el.id);
     refresh();
   };
+  // Empréstimo: juros em R$ e em % andam juntos. O último digitado manda; o outro é calculado sobre o valor emprestado.
+  let jurosSrc = existing && Calc.num(existing.jurosMes) == null && Calc.num(existing.taxaMes) != null ? 'pct' : 'brl';
+  function syncJuros(id) {
+    if (id === 'f_jurosMes') jurosSrc = 'brl'; else if (id === 'f_taxaMes') jurosSrc = 'pct'; else if (id !== 'f_valor') return;
+    const v = parseMoney($('#f_valor').value), j = parseMoney($('#f_jurosMes').value), t = parseMoney($('#f_taxaMes').value);
+    const ok = (x) => x != null && !Number.isNaN(x);
+    if (jurosSrc === 'brl') {
+      if (!ok(j)) { if (id === 'f_jurosMes') $('#f_taxaMes').value = ''; return; }
+      if (ok(v) && v > 0) $('#f_taxaMes').value = String(Math.round(j / v * 1000) / 10).replace('.', ','); // uma casa: 3,5
+    } else {
+      if (!ok(t)) { if (id === 'f_taxaMes') $('#f_jurosMes').value = ''; return; }
+      if (ok(v) && v > 0) $('#f_jurosMes').value = moneyField(Calc.jurosDaTaxa(v, t / 100)); // reais inteiros, arredondado para cima
+    }
+  }
   m.onchange = refresh; refresh();
   const first = $('#form input[type=text], #form select');
   if (first) first.focus();

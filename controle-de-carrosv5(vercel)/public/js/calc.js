@@ -239,12 +239,14 @@ var Calc = (function () {
      'Juros mensais': juros todo mês (no dia do empréstimo) até a devolução; no vencimento, juros do mês + o valor emprestado.
      'Parcelado': tabela Price com juros de taxaMes ao mês (sem juros: parcelas iguais); 1º vencimento em venc ou um mês depois.
      Devolve [{ label, tipo, due, valor }]. */
+  /* Juros do mês a partir da % (0 a 1): em reais inteiros, arredondado para cima (3,3% de 33.333 = R$ 1.100). */
+  function jurosDaTaxa(valor, taxa) { var c = Math.round(N0(valor) * N0(taxa) * 100); return Math.ceil(c / 100 - 0.001); }
   function loanPlan(l) {
     var v = N0(l.valor), out = [], i;
     if (v <= 0 || !l.data) return out;
     if (l.modo === 'Juros mensais') {
       if (!l.venc || l.venc <= l.data) return out;
-      var j = num(l.jurosMes) !== null ? N0(l.jurosMes) : r2(v * N0(l.taxaMes));
+      var j = num(l.jurosMes) !== null ? N0(l.jurosMes) : jurosDaTaxa(v, l.taxaMes);
       for (i = 1; i <= 120; i++) {
         var due = addMonths(l.data, i);
         if (due > l.venc) break;
@@ -311,7 +313,7 @@ var Calc = (function () {
   /* Resumo das contas a pagar. Conta paga por "ambos" (quem vazio) divide meio a meio.
      Ignora contas excluídas e as de empréstimo ou carro excluído. */
   function debts(payables, loans, cars, today) {
-    var lv = {}, cv = {}, s = { total: 0, A: 0, B: 0, atrasado: 0, prox30: 0, pago: 0, jurosPagos: 0, jurosPend: 0, jurosMes: 0, prox: null, n: 0, porLoan: {}, porCar: {} };
+    var lv = {}, cv = {}, s = { total: 0, A: 0, B: 0, atrasado: 0, prox30: 0, pago: 0, jurosPagos: 0, jurosPend: 0, jurosMes: 0, quitAtrasadas: 0, prox: null, n: 0, porLoan: {}, porCar: {} };
     (loans || []).forEach(function (l) { if (!l.deleted) lv[l.id] = l; });
     (cars || []).forEach(function (c) { if (!c.deleted) cv[c.id] = c; });
     var em30 = addDays(today, 30);
@@ -319,8 +321,11 @@ var Calc = (function () {
       if (x.deleted) return;
       if (x.loanId != null ? !lv[x.loanId] : !cv[x.carId]) return;
       var v = N0(x.valor), key = x.loanId != null ? 'porLoan' : 'porCar', id = x.loanId != null ? x.loanId : x.carId;
-      var g = s[key][id] || (s[key][id] = { total: 0, pago: 0, falta: 0, A: 0, B: 0, atrasado: 0, prox: null, proxValor: 0, n: 0, nPago: 0, jurosPagos: 0, itens: [] });
+      var g = s[key][id] || (s[key][id] = { total: 0, pago: 0, falta: 0, A: 0, B: 0, atrasado: 0, prox: null, proxValor: 0, n: 0, nPago: 0, jurosPagos: 0, jurosDepois: 0, fim: null, itens: [] });
       g.total += v; g.n++; g.itens.push(x);
+      if (!g.fim || x.due > g.fim) g.fim = x.due;
+      // juros mensais ainda não pagos que vencem depois da quitação prevista: não serão pagos se quitarmos antes
+      if (x.loanId != null && x.status !== 'Pago' && x.tipo === 'Juros' && lv[x.loanId].quitPrev && x.due > lv[x.loanId].quitPrev) g.jurosDepois += v;
       if (x.status === 'Pago') {
         s.pago += v; g.pago += v; g.nPago++;
         if (x.tipo === 'Juros') { s.jurosPagos += v; g.jurosPagos += v; }
@@ -338,15 +343,18 @@ var Calc = (function () {
       var l = lv[id], g = s.porLoan[id];
       g.itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); });
       g.juros = r2(g.total - N0(l.valor)); // juros do empréstimo inteiro (pago + a pagar)
-      if (l.modo === 'Parcelado' && g.total > 0) g.jurosPagos = r2(g.pago * g.juros / g.total); // parcela = parte juros + parte valor
-      if (l.modo === 'Juros mensais' && g.falta > 0.004) s.jurosMes += num(l.jurosMes) !== null ? N0(l.jurosMes) : r2(N0(l.valor) * N0(l.taxaMes));
-      if (l.modo === 'Parcelado') s.jurosPagos += g.jurosPagos;
-      s.jurosPend += Math.max(0, r2(g.juros - g.jurosPagos)); // juros que ainda vamos pagar
       g.quitado = g.falta <= 0.004;
+      if (l.modo === 'Parcelado' && g.total > 0) g.jurosPagos = r2(g.pago * g.juros / g.total); // parcela = parte juros + parte valor
+      if (l.modo === 'Juros mensais' && g.falta > 0.004) s.jurosMes += num(l.jurosMes) !== null ? N0(l.jurosMes) : jurosDaTaxa(N0(l.valor), l.taxaMes);
+      if (l.modo === 'Parcelado') s.jurosPagos += g.jurosPagos;
+      s.jurosPend += Math.max(0, r2(g.juros - g.jurosPagos - g.jurosDepois)); // juros que ainda vamos pagar (até a quitação prevista)
+      g.quitPrev = l.quitPrev || g.fim; g.quitPrevManual = !!l.quitPrev; // vazio = data da última parcela
+      g.quitAtrasada = !g.quitado && !!g.quitPrev && g.quitPrev < today;
+      if (g.quitAtrasada) s.quitAtrasadas++;
     });
     Object.keys(s.porCar).forEach(function (id) { s.porCar[id].itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); }); });
     return s;
   }
-  return { loanPlan: loanPlan, debts: debts, jurosPagos: jurosPagos, loanTrail: loanTrail, isConsig: isConsig, compute: compute, summary: summary, plan: plan, addMonths: addMonths, splitOf: splitOf, entry: entry, num: num, diff: diff, addDays: addDays, P: P };
+  return { jurosDaTaxa: jurosDaTaxa, loanPlan: loanPlan, debts: debts, jurosPagos: jurosPagos, loanTrail: loanTrail, isConsig: isConsig, compute: compute, summary: summary, plan: plan, addMonths: addMonths, splitOf: splitOf, entry: entry, num: num, diff: diff, addDays: addDays, P: P };
 })();
 if (typeof module !== 'undefined') module.exports = Calc;

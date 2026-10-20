@@ -120,6 +120,7 @@ const entities = {
       taxaMes: { t: 'pct', label: L('Juros por mês (%)') },
       nParc: { t: 'int', min: 1, max: 120, label: L('Número de parcelas') },
       venc: { t: 'date', label: L('Vencimento') },
+      quitPrev: { t: 'date', label: L('Quitação prevista') },
       quem: { t: 'partner', label: L('Quem paga') },
       obs: { t: 'text', max: 500, label: L('Finalidade') },
     },

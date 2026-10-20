@@ -106,6 +106,7 @@ views.resumo = {
     if (s.parcAtras) al.push(['vendas', `${s.parcAtras} ${s.parcAtras === 1 ? 'parcela de venda atrasada' : 'parcelas de venda atrasadas'} (${brl(s.atrasado)})`]);
     if (s.repFalta > 0.004) al.push(['carros', `Falta repassar ${brl(s.repFalta)} a donos de carros consignados`]);
     if (S.DV.atrasado > 0.004) al.push([Object.values(S.DV.porCar).some((g) => g.atrasado > 0.004) ? 'apagar' : 'emprestimos', `Conta a pagar atrasada: ${brl(S.DV.atrasado)}`]);
+    if (S.DV.quitAtrasadas) al.push(['emprestimos', `${S.DV.quitAtrasadas} ${S.DV.quitAtrasadas === 1 ? 'empréstimo passou' : 'empréstimos passaram'} da data prevista de quitação`]);
     if (s.prevAtrasados) al.push(['previstos', `${s.prevAtrasados} ${s.prevAtrasados === 1 ? 'gasto previsto atrasado' : 'gastos previstos atrasados'}`]);
     let h = `<div class="alerts">${al.length ? al.map((a) => `<button class="alert" data-go="${a[0]}">${esc(a[1])}</button>`).join('') : '<div class="alert ok">Nenhum alerta no momento.</div>'}</div>`;
     const K = (t, v, cls, hero) => `<div class="kpi${hero ? ' hero' : ''}"><dt>${esc(t)}</dt><dd class="${cls || ''}">${v}</dd></div>`;
