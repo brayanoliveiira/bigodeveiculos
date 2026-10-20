@@ -75,3 +75,23 @@ export function downloadFile(name, text, type = 'text/csv;charset=utf-8') {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export const mlabel = (k) => (/^\d{4}-\d{2}$/.test(k) ? ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][+k.slice(5) - 1] + '/' + k.slice(2, 4) : k || 'Sem data');
+
+/** Nome padronizado da montadora: "VW", "VolksWagen" e "VW - VolksWagen" viram "Volkswagen"; "GM - Chevrolet" vira "Chevrolet". */
+const MARCAS = { vw: 'Volkswagen', volkswagen: 'Volkswagen', gm: 'Chevrolet', chevrolet: 'Chevrolet', chev: 'Chevrolet', mercedes: 'Mercedes-Benz', 'mercedes-benz': 'Mercedes-Benz', mb: 'Mercedes-Benz',
+  bmw: 'BMW', byd: 'BYD', gwm: 'GWM', jac: 'JAC', ram: 'RAM', kia: 'Kia', 'land rover': 'Land Rover', 'land-rover': 'Land Rover', citroen: 'Citroën', 'citroën': 'Citroën', caoa: 'Caoa Chery', chery: 'Caoa Chery' };
+export function marcaNome(s) {
+  let t = String(s || '').trim();
+  if (!t) return null;
+  if (t.includes(' - ')) t = t.split(' - ').pop().trim();
+  const k = t.toLowerCase();
+  return MARCAS[k] || t.toLowerCase().replace(/(^|[\s-])\S/g, (c) => c.toUpperCase());
+}
+/** Montadora do carro: o campo marca, ou a primeira palavra do nome (carros cadastrados antes do campo existir). */
+export function marcaOf(c) {
+  const m = marcaNome(c.marca);
+  if (m) return m;
+  const n = String(c.name || '').trim();
+  const two = n.split(/\s+/).slice(0, 2).join(' ').toLowerCase();
+  if (MARCAS[two]) return MARCAS[two];
+  return marcaNome(n.split(/[\s/]+/)[0]) || 'Sem montadora';
+}

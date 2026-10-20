@@ -10,9 +10,10 @@ const ROOT = path.join(__dirname, '..');
 
 const lists = {
   locs: ['Pátio / Loja', 'Oficina mecânica', 'Funilaria e pintura', 'Elétrica', 'Lavagem / estética',
-    'Despachante / vistoria', 'Com cliente (test drive)', 'Outro'],
+    'Despachante / vistoria', 'Com cliente (test drive)', 'Outro', 'Entregue'],
   cats: ['Mecânica', 'Peças', 'Funilaria e pintura', 'Pneus', 'Elétrica', 'Documentação e transferência',
     'IPVA / multas / licenciamento', 'Limpeza e estética', 'Combustível', 'Anúncio / marketing', 'Comissão', 'Outros'],
+  // 'Pátio / Loja' e 'Entregue' (locs) também são comparados por texto em server/services.js: não renomeie.
   // Os três abaixo são comparados por texto nas regras de cálculo (public/js/calc.js): não renomeie.
   status: ['Em estoque', 'Reservado', 'Vendido'],
   pstatus: ['Pendente', 'Realizado', 'Cancelado'],

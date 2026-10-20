@@ -10,7 +10,7 @@ export const S = {
   loaded: false, auditLoaded: false,
   tab: 'resumo',
   year: new Date().getFullYear(),
-  ui: { q: '', st: 'Todos', gcar: '', gquem: '', pcar: '', pst: '', hu: '', he: '', open: {}, vf: 'Todas', rep: 'geral', per: 'ano', from: '', to: '', rcCar: null, repCar: null },
+  ui: { q: '', st: 'Todos', gcar: '', gquem: '', pcar: '', pst: '', hu: '', he: '', open: {}, vf: 'Todas', rep: 'geral', per: 'ano', from: '', to: '', rcCar: null, repCar: null, byMarca: (() => { try { return !!localStorage.getItem('bc.byMarca'); } catch { return false; } })() },
   D: {},
   users: [],
 };

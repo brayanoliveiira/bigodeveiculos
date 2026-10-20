@@ -1,5 +1,5 @@
 // Telas. Cada uma tem mount(el) (monta o esqueleto) e paint() (redesenha com os dados atuais).
-import { $, esc, brl, pct, dmy, today, stamp, sign, initials } from './util.js';
+import { $, esc, brl, pct, dmy, today, stamp, sign, initials, marcaOf } from './util.js';
 import { S, LISTS, names, itemOf, carName, liveCars, locClass } from './state.js';
 
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -34,13 +34,15 @@ function fipeNote(c) {
 function carCard(d) {
   const c = d.c, open = S.ui.open[c.id];
   const locInfo = `<div class="locrow">${stPill(c.status)}${locPill(c)}${c.locdet ? `<span>${esc(c.locdet)}</span>` : ''}${d.diasLoc != null ? `<span class="mut">há ${d.diasLoc} dia${d.diasLoc === 1 ? '' : 's'}</span>` : ''}${d.atrasoLoc ? '<span class="pill late">Saída atrasada</span>' : d.saiLogo ? '<span class="pill soon">Sai em até 2 dias</span>' : ''}</div>`;
+  const hist = c.leilao || c.sinistro
+    ? `<div class="locrow">${c.leilao ? '<span class="pill late">Leilão</span>' : ''}${c.sinistro ? '<span class="pill late">Sinistro</span>' : ''}${c.histObs ? `<span class="mut small">${esc(c.histObs)}</span>` : ''}</div>` : '';
   const n2 = d.vendido
     ? `<div><dt>Venda</dt><dd>${brl(Calc.num(c.vvenda))}</dd></div><div><dt>${d.consig ? 'Comissão' : 'Lucro'}</dt><dd class="${sign(d.lucro)}">${brl(d.lucro)}</dd></div>`
     : `<div><dt>Anúncio</dt><dd>${brl(Calc.num(c.anun))}</dd></div><div><dt>${d.consig ? 'Comissão projetada' : 'Lucro projetado'}</dt><dd class="${sign(d.proj)}">${brl(d.proj)}</dd></div>`;
   const foot = d.vendido && d.lucro != null
     ? `${d.consig ? 'Comissão' : 'Lucro'}: ${nm('A')} ${brl(d.lucA)} · ${nm('B')} ${brl(d.lucB)}`
     : `Divisão: ${nm('A')} ${Math.round(d.pA * 100)}% · ${nm('B')} ${Math.round((1 - d.pA) * 100)}%`;
-  let h = `<article class="card cs-${esc(String(c.status || 'Em').split(' ')[0])}" data-id="${c.id}"><div class="card-h">${plate(c.placa)}<div class="ct"><h3>${esc(c.name)}</h3><p class="mut">${[c.ano, c.cor, c.km != null ? Number(c.km).toLocaleString('pt-BR') + ' km' : null, c.dcompra ? 'comprado em ' + dmy(c.dcompra) : null, d.dias != null ? d.dias + ' dias' : null].filter(Boolean).map(esc).join(' · ')}</p></div></div>${locInfo}` +
+  let h = `<article class="card cs-${esc(String(c.status || 'Em').split(' ')[0])}" data-id="${c.id}"><div class="card-h">${plate(c.placa)}<div class="ct"><h3>${esc(c.name)}</h3><p class="mut">${[c.ano, c.cor, c.km != null ? Number(c.km).toLocaleString('pt-BR') + ' km' : null, c.dcompra ? 'comprado em ' + dmy(c.dcompra) : null, d.dias != null ? d.dias + ' dias' : null].filter(Boolean).map(esc).join(' · ')}</p></div></div>${locInfo}${hist}` +
     `<dl class="nums"><div><dt>Custo total</dt><dd>${brl(d.custo)}</dd></div>${n2}</dl>` +
     (c.fipe ? `<div class="fipe"><span>FIPE <b class="num">${brl(Calc.num(c.fipe))}</b></span>${fipeNote(c)}</div>` : '') +
     (d.entregue ? `<div class="consig"><span class="pill dono">Carro de troca · fica com ${esc(c.dono)}</span><span class="mut">Não conta como nosso estoque; o valor abate o repasse.</span></div>` : d.consig ? `<div class="consig"><span class="pill dono">Consignado · ${esc(c.dono)}</span><span>Repasse <b class="num">${brl(d.repasse)}</b></span>${d.emEspecie > 0 ? `<span>Já em carro <b class="num">${brl(d.emEspecie)}</b></span>` : ''}${d.repFalta > 0.004 ? `<span class="pill soon">Falta repassar ${brl(d.repFalta)}</span>` : '<span class="pill ok">Repassado</span>'}<button class="btn sm" data-act="repasses" data-id="${c.id}">Repasses</button></div>` : '') +
@@ -101,12 +103,14 @@ views.resumo = {
     if (s.prevAtrasados) al.push(['previstos', `${s.prevAtrasados} ${s.prevAtrasados === 1 ? 'gasto previsto atrasado' : 'gastos previstos atrasados'}`]);
     let h = `<div class="alerts">${al.length ? al.map((a) => `<button class="alert" data-go="${a[0]}">${esc(a[1])}</button>`).join('') : '<div class="alert ok">Nenhum alerta no momento.</div>'}</div>`;
     const K = (t, v, cls, hero) => `<div class="kpi${hero ? ' hero' : ''}"><dt>${esc(t)}</dt><dd class="${cls || ''}">${v}</dd></div>`;
+    const soc = Reports.porSocio(S.D, S.expenses);
+    h += '<dl class="grid kpis socios" style="margin:0 0 12px">' + ['A', 'B'].map((p) =>
+      K(`Investido hoje · ${nm(p)}`, brl(soc[p].estoque.inv), '', true) + K(`Lucro realizado · ${nm(p)}`, brl(soc[p].vendidos.luc), sign(soc[p].vendidos.luc), true)).join('') + '</dl>';
     h += '<dl class="grid kpis" style="margin:0">' + K('Lucro realizado', brl(s.lucro), '', true) + K('Em estoque / reservados', `${s.estoque} / ${s.reservados}`) + K('Vendidos', String(s.vendidos)) +
       K('Dinheiro parado em estoque', brl(s.parado)) + K('Gastos previstos pendentes', brl(s.prevPend)) + K('Lucro projetado do estoque', brl(s.proj), sign(s.proj)) +
       K('Faturamento (inclui trocas)', brl(s.fatur)) + K('Margem média', pct(s.margem)) + K('Lucro médio por carro', brl(s.lucroMedio), sign(s.lucroMedio)) +
       K('Deixou de ganhar (descontos)', brl(s.perdeu)) + K('Dias médios para vender', s.diasMedio == null ? '—' : Math.round(s.diasMedio) + ' dias') + K('Recebido em carro de troca', brl(s.trocaTot)) +
       K('A receber de clientes', brl(s.aReceber)) + K('Parcelas atrasadas', brl(s.atrasado), s.atrasado > 0 ? 'neg' : '') + (s.consigEstoque || s.repFalta > 0.004 ? K('A repassar a donos', brl(s.repFalta), s.repFalta > 0.004 ? 'neg' : '') : '') + '</dl>';
-    const soc = Reports.porSocio(S.D, S.expenses);
     h += `<section class="panel"><h2>Investido por sócio</h2><p class="mut small" style="margin:0 0 8px">Entrada + gastos que cada um pagou, mesmo antes de vender.</p><div class="tbl" style="border:0"><table class="compact" style="min-width:0"><thead><tr><th>Sócio</th><th class="r">Em estoque</th><th class="r">Em carros vendidos</th><th class="r">Total investido</th></tr></thead><tbody>${['A', 'B'].map((c) => `<tr><td>${esc(nm(c))}</td><td class="r num">${brl(soc[c].estoque.inv)}</td><td class="r num">${brl(soc[c].vendidos.inv)}</td><td class="r num"><b>${brl(soc[c].totalInvestido)}</b></td></tr>`).join('')}</tbody></table></div></section>`;
     const [a0] = s.acerto;
     h += '<div class="grid two"><section class="panel"><h2>Acerto entre sócios</h2><div class="tbl" style="border:0"><table class="compact" style="min-width:0"><thead><tr><th>Sócio</th><th class="r">Investiu</th><th class="r">Recebeu</th><th class="r">Lucro</th><th class="r">Saldo</th></tr></thead><tbody>' +
@@ -124,8 +128,13 @@ views.resumo = {
 
 views.carros = {
   mount(el) {
-    el.innerHTML = `<div class="toolbar"><input type="text" id="q" class="grow" placeholder="Buscar por nome, placa ou comprador" value="${esc(S.ui.q)}" aria-label="Buscar carro"><div class="chips" id="stchips"></div>${S.canWrite ? '<button class="btn pri" data-act="new-car">Novo carro</button>' : ''}</div><div id="list"></div>`;
+    el.innerHTML = `<div class="toolbar"><input type="text" id="q" class="grow" placeholder="Buscar por nome, placa ou comprador" value="${esc(S.ui.q)}" aria-label="Buscar carro"><div class="chips" id="stchips"></div><button class="chip" id="bymarca" aria-pressed="${!!S.ui.byMarca}">Agrupar por montadora</button>${S.canWrite ? '<button class="btn pri" data-act="new-car">Novo carro</button>' : ''}</div><div id="list"></div>`;
     $('#q').oninput = function () { S.ui.q = this.value; views.carros.paint(); };
+    $('#bymarca').onclick = function () {
+      S.ui.byMarca = !S.ui.byMarca; this.setAttribute('aria-pressed', String(S.ui.byMarca));
+      try { localStorage.setItem('bc.byMarca', S.ui.byMarca ? '1' : ''); } catch { /* sem armazenamento: vale só nesta visita */ }
+      views.carros.paint();
+    };
     this.paint();
   },
   paint() {
@@ -137,8 +146,18 @@ views.carros = {
     const list = derived().filter((d) => {
       const c = d.c;
       if (S.ui.st !== 'Todos' && c.status !== S.ui.st) return false;
-      return !q || [c.name, c.placa, c.comprador].join(' ').toLowerCase().includes(q);
+      return !q || [c.name, c.placa, c.comprador, marcaOf(c)].join(' ').toLowerCase().includes(q);
     }).sort((a, b) => (a.vendido - b.vendido) || String(b.c.dcompra || '').localeCompare(String(a.c.dcompra || '')));
+    if (list.length && S.ui.byMarca) {
+      const g = {};
+      list.forEach((d) => { (g[marcaOf(d.c)] = g[marcaOf(d.c)] || []).push(d); });
+      const keys = Object.keys(g).sort((a, b) => (g[b].length - g[a].length) || a.localeCompare(b, 'pt-BR'));
+      box.innerHTML = keys.map((k) => {
+        const est = g[k].filter((d) => !d.vendido).length;
+        return `<section class="mgrp"><h2 class="mgrp-h">${esc(k)} <span class="mut small">${g[k].length} ${g[k].length === 1 ? 'carro' : 'carros'}${est ? ` · ${est} em estoque` : ''}</span></h2><div class="cars">${g[k].map(carCard).join('')}</div></section>`;
+      }).join('');
+      return;
+    }
     box.innerHTML = list.length ? `<div class="cars">${list.map(carCard).join('')}</div>` : '<div class="empty"><p class="mut" style="margin:0">Nenhum carro encontrado com esse filtro.</p></div>';
   },
 };

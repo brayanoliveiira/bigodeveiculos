@@ -5,7 +5,7 @@
  * e o que é obrigatório. Para acrescentar um campo: crie a coluna numa migration nova, declare o
  * campo aqui e (se quiser digitá-lo na tela) acrescente-o em public/js/forms.js.
  *
- * Tipos: text, int, money, pct (0 a 1), date (AAAA-MM-DD), enum, partner ('A' ou 'B'), ref (id de outro item).
+ * Tipos: text, int, money, pct (0 a 1), date (AAAA-MM-DD), enum, partner ('A' ou 'B'), ref (id de outro item), bool (0 ou 1).
  * `label` recebe os nomes dos sócios ({A, B}) porque alguns rótulos os citam.
  */
 const { lists } = require('./config');
@@ -24,6 +24,10 @@ const entities = {
       ano: { t: 'int', min: 1900, max: 2100, label: L('Ano') },
       cor: { t: 'text', max: 40, label: L('Cor') },
       km: { t: 'int', min: 0, max: 3000000, label: L('KM') },
+      marca: { t: 'text', max: 40, label: L('Montadora') },
+      leilao: { t: 'bool', label: L('Veio de leilão') },
+      sinistro: { t: 'bool', label: L('Tem sinistro') },
+      histObs: { t: 'text', max: 500, label: L('Observação de leilão / sinistro') },
       fipe: { t: 'money', label: L('Valor FIPE') },
       fipeRef: { t: 'text', max: 80, label: L('Referência FIPE') },
       dcompra: { t: 'date', label: L('Data da compra') },
@@ -187,6 +191,12 @@ async function validate(def, input, db, current) {
         if (!f.values.includes(v)) errors.push(`Opção inválida em "${label}".`);
         break;
       }
+      case 'bool': {
+        if (raw === true || raw === 1 || raw === '1' || raw === 'true') v = 1;
+        else if (raw === false || raw === 0 || raw === '0' || raw === 'false') v = 0;
+        else errors.push(`Use sim ou não em "${label}".`);
+        break;
+      }
       case 'partner': {
         v = String(raw);
         if (v !== 'A' && v !== 'B') errors.push(`Sócio inválido em "${label}".`);
@@ -215,6 +225,7 @@ async function fmtValue(db, f, v, partners) {
     case 'pct': return `${(v * 100).toFixed(1).replace('.', ',')}%`;
     case 'date': return String(v).split('-').reverse().join('/');
     case 'partner': return partners[v] || v;
+    case 'bool': return v ? 'Sim' : 'Não';
     case 'ref': return f.ref === 'receipts' ? await receiptName(db, v) : await carName(db, v);
     default: return String(v);
   }

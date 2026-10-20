@@ -1,6 +1,6 @@
 // Formulários (carro, gasto, previsto, mover) e janelas de confirmação.
 // O servidor valida tudo de novo; aqui só se evita ida e volta desnecessária.
-import { $, esc, brl, dmy, today, parseMoney, toast, moneyField, installMoneyMask, stamp } from './util.js';
+import { $, esc, brl, dmy, today, parseMoney, toast, moneyField, installMoneyMask, stamp, marcaNome } from './util.js';
 import { S, LISTS, names, liveCars } from './state.js';
 import { api } from './api.js';
 
@@ -13,6 +13,10 @@ const listOpts = (key) => () => LISTS[key].map((o) => [o, o]);
 const isSold = (v) => v.status === 'Vendido';
 const isConsig = (v) => !!String(v.dono || '').trim();
 const notConsig = (v) => !isConsig(v);
+const notSold = (v) => !isSold(v);
+const temHist = (v) => !!(v.leilao || v.sinistro);
+// 'Entregue' é posto pelo servidor quando o carro é vendido: não aparece para escolher.
+const locOpts = () => LISTS.locs.filter((l) => l !== 'Entregue').map((o) => [o, o]);
 
 // t: text | int | money | pct | date | sel | car. `opts` é função (as listas chegam do servidor depois do login).
 const F = {
@@ -21,9 +25,12 @@ const F = {
     { k: 'placa', label: 'Placa', t: 'text', upper: true, hint: 'Ao digitar a placa completa, modelo, ano, cor e FIPE são preenchidos sozinhos.' }, { k: 'ano', label: 'Ano', t: 'int' },
     { lookup: true },
     { k: 'name', label: 'Carro (modelo e versão)', t: 'text', req: true, full: true },
-    { k: 'cor', label: 'Cor', t: 'text' }, { k: 'km', label: 'KM (quilometragem)', t: 'int', hint: 'Ex.: 85.000' },
+    { k: 'marca', label: 'Montadora', t: 'text', hint: 'Vem da placa ou da tabela FIPE.' }, { k: 'cor', label: 'Cor', t: 'text' },
+    { k: 'km', label: 'KM (quilometragem)', t: 'int', hint: 'Ex.: 85.000' },
     { k: 'fipe', label: 'Valor FIPE', t: 'money', hint: 'Vem da busca na tabela FIPE ou da placa. Também dá para digitar.' },
     { k: 'fipeRef', label: 'Referência da FIPE', t: 'text', hint: 'Mês da tabela e código FIPE.' },
+    { k: 'leilao', label: 'Veio de leilão', t: 'chk' }, { k: 'sinistro', label: 'Tem sinistro', t: 'chk' },
+    { k: 'histObs', label: 'Observação de leilão / sinistro', t: 'text', full: true, showIf: temHist, hint: 'Ex.: leilão de financeira, batida leve na traseira, sem dano estrutural.' },
     { g: 'Compra' },
     { k: 'dcompra', label: 'Data da compra (ou de quando o carro chegou)', t: 'date' },
     { k: 'dono', label: 'Carro de terceiro? Dono do carro', t: 'text', full: true, hint: 'Deixe vazio se o carro é nosso. Preenchido = consignado: ninguém paga pelo carro, ele só fica aqui para vender.' },
@@ -35,9 +42,10 @@ const F = {
     { note: 'entnote' },
     { k: 'anun', label: 'Preço de anúncio', t: 'money' },
     { g: 'Onde está' },
-    { k: 'loc', label: 'Onde está agora', t: 'sel', opts: listOpts('locs'), blank: 'Não informado' },
-    { k: 'locdet', label: 'Qual oficina / funilaria', t: 'text' },
-    { k: 'locdesde', label: 'No local desde', t: 'date' }, { k: 'locprev', label: 'Previsão de saída', t: 'date' },
+    { k: 'loc', label: 'Onde está agora', t: 'sel', opts: locOpts, blank: 'Não informado', showIf: notSold },
+    { k: 'locdet', label: 'Qual oficina / funilaria', t: 'text', showIf: notSold },
+    { k: 'locdesde', label: 'No local desde', t: 'date', showIf: notSold, hint: 'No Pátio / Loja, vazio = data da compra.' }, { k: 'locprev', label: 'Previsão de saída', t: 'date', showIf: notSold },
+    { note: 'entregue', showIf: isSold },
     { k: 'status', label: 'Status', t: 'sel', opts: listOpts('status'), req: true },
     { g: 'Venda', showIf: isSold },
     { k: 'dvenda', label: 'Data da venda', t: 'date', showIf: isSold },
@@ -80,7 +88,7 @@ const F = {
     { k: 'obs', label: 'Observação', t: 'text', full: true },
   ], defaults: () => ({ date: today() }) },
   move: { col: 'cars', title: 'Mover carro', fields: () => [
-    { k: 'loc', label: 'Onde está agora', t: 'sel', opts: listOpts('locs'), req: true, full: true },
+    { k: 'loc', label: 'Onde está agora', t: 'sel', opts: locOpts, req: true, full: true },
     { k: 'locdet', label: 'Qual oficina / funilaria', t: 'text', full: true },
     { k: 'locdesde', label: 'No local desde', t: 'date' }, { k: 'locprev', label: 'Previsão de saída', t: 'date' },
   ] },
@@ -117,6 +125,7 @@ function readForm(mode) {
   for (const f of valued(mode)) {
     const el = $('#f_' + f.k);
     if (!el) continue;
+    if (f.t === 'chk') { vals[f.k] = el.checked ? 1 : 0; continue; }
     const raw = el.value.trim();
     let v;
     if (raw === '') v = null;
@@ -163,7 +172,9 @@ export function openForm(mode, existing, opts = {}) {
         `<div class="field full"><label for="fp_ano">Ano e combustível</label><select id="fp_ano"></select></div></div><div id="fp_res" aria-live="polite"></div></div></div>`;
       continue;
     }
+    if (f.note === 'entregue') { h += '<div class="field full hint" data-k="_entregue">Carro vendido: o local passa a ser <b>Entregue</b>.</div>'; continue; }
     if (f.note) { h += '<div class="field full hint" id="entnote"></div>'; continue; }
+    if (f.t === 'chk') { h += `<div class="field chk" data-k="${f.k}"><label><input type="checkbox" id="f_${f.k}"${init[f.k] ? ' checked' : ''}> ${esc(f.label)}</label></div>`; continue; }
     h += `<div class="field${f.full ? ' full' : ''}" data-k="${f.k}"><label for="f_${f.k}">${esc(f.label)}${f.req ? ' *' : ''}</label>${control(f, init[f.k], selfId)}${f.hint ? `<span class="hint">${esc(f.hint)}</span>` : ''}</div>`;
   }
   h += '</div><div class="err" id="ferr" role="alert"></div><div class="acts"><button type="button" class="btn" data-x="cancel">Cancelar</button><button type="submit" class="btn pri" id="fsave">Salvar</button></div></form>';
@@ -172,11 +183,11 @@ export function openForm(mode, existing, opts = {}) {
 
   const refresh = () => {
     const cur = {};
-    for (const f of valued(mode)) { const el = $('#f_' + f.k); if (el) cur[f.k] = el.value; }
+    for (const f of valued(mode)) { const el = $('#f_' + f.k); if (el) cur[f.k] = el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value; }
     for (const f of def.fields()) {
       if (!f.showIf) continue;
       const show = !!f.showIf(cur);
-      const node = f.g ? $(`.grp[data-g="${f.g}"]`) : $(`.field[data-k="${f.k}"]`);
+      const node = f.g ? $(`.grp[data-g="${f.g}"]`) : $(`.field[data-k="${f.k || '_' + f.note}"]`);
       if (node) node.hidden = !show;
     }
     const en = $('#entnote');
@@ -302,7 +313,7 @@ function wirePlateLookup(refresh) {
       const d = await api('GET', `/api/placa/${encodeURIComponent(placa)}${fresh ? '?fresh=1' : ''}`);
       if (my !== seq || norm($('#f_placa').value) !== d.placa) return; // a placa mudou enquanto consultava
       // Placa consultada manda: modelo, ano, cor e FIPE são trocados pelos dela.
-      putField('placa', d.placa); putField('name', d.nome); setField('ano', d.ano); setField('cor', d.cor);
+      putField('placa', d.placa); putField('name', d.nome); setField('marca', marcaNome(d.marca)); setField('ano', d.ano); setField('cor', d.cor);
       applyFipe(d.fipe[0], refresh, true);
       show(d);
     } catch (e) {
@@ -372,6 +383,7 @@ function wireFipePicker(refresh) {
     const o = await api('GET', `/api/fipe/marcas/${b}/modelos/${m}/anos/${encodeURIComponent(y)}`);
     const marca = String(o.marca || '').split(' - ').pop();
     putField('name', [marca, o.modelo].filter(Boolean).join(' '), true);
+    putField('marca', marcaNome(marca));
     putField('ano', o.anoModelo, true);
     applyFipe(o, refresh);
     res.innerHTML = `<span class="small"><b>${esc(brl(o.valor))}</b> — ${esc(o.modelo || '')} ${o.anoModelo || ''} ${esc(o.combustivel || '')}<br><span class="mut">Tabela FIPE de ${esc(o.referencia || '—')} · cód. ${esc(o.codigo || '—')}. Já preenchido no cadastro.</span></span>`;

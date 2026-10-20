@@ -270,3 +270,33 @@ test('pagamentos parciais e repasses de consignado: validação, sincronia da pa
   assert.equal((await adm('POST', '/api/repasses', { carId: k.id, date: '2026-10-02', valor: 15000 })).status, 201);
   assert.equal((await adm('POST', '/api/repasses', { carId: k.id, date: '2026-10-02', valor: 0 })).status, 400);
 });
+
+test('fase 1: pátio sem data usa a compra, vendido vira Entregue, leilão/sinistro e montadora', async () => {
+  const adm = client();
+  await adm('POST', '/api/login', { username: 'brayan', password: 'senha-do-brayan' });
+  const c = (await adm('POST', '/api/cars', { name: 'Fiat Uno', marca: 'Fiat', dcompra: '2026-09-01', entT: 15000, loc: 'Pátio / Loja', leilao: 1, histObs: 'leilão de financeira' })).json.item;
+  assert.equal(c.locdesde, '2026-09-01'); assert.equal(c.leilao, 1); assert.equal(c.sinistro, null); assert.equal(c.marca, 'Fiat');
+  // data informada é respeitada; local que não é o pátio não ganha data
+  assert.equal((await adm('POST', '/api/cars', { name: 'A', dcompra: '2026-09-01', loc: 'Pátio / Loja', locdesde: '2026-09-05' })).json.item.locdesde, '2026-09-05');
+  assert.equal((await adm('POST', '/api/cars', { name: 'B', dcompra: '2026-09-01', loc: 'Oficina mecânica' })).json.item.locdesde, null);
+  assert.equal((await adm('POST', '/api/cars', { name: 'C', sinistro: 'talvez' })).status, 400);
+
+  const sold = await adm('PATCH', `/api/cars/${c.id}`, { status: 'Vendido', vvenda: 20000, dvenda: '2026-10-10', locdet: 'Oficina do Zé' });
+  assert.equal(sold.json.item.loc, 'Entregue'); assert.equal(sold.json.item.locdet, null); assert.equal(sold.json.item.locdesde, '2026-10-10');
+  // vendido não sai de "Entregue" ao ser movido
+  assert.equal((await adm('PATCH', `/api/cars/${c.id}`, { _action: 'move', loc: 'Oficina mecânica' })).json.item.loc, 'Entregue');
+  // voltou para o estoque: sai de "Entregue"
+  const back = await adm('PATCH', `/api/cars/${c.id}`, { status: 'Em estoque' });
+  assert.equal(back.json.item.loc, null);
+
+  const audit = (await adm('GET', '/api/audit?limit=200')).json.audit;
+  const ch = (h) => (typeof h.changes === 'string' ? JSON.parse(h.changes) : h.changes) || [];
+  assert.ok(audit.some((h) => h.entityId === c.id && ch(h).some((x) => x.f === 'Veio de leilão' && x.para === 'Sim')));
+});
+
+test('montadora: nomes padronizados e tirados do nome do carro', async () => {
+  const { marcaNome, marcaOf } = await import('../public/js/util.js');
+  assert.equal(marcaNome('VW - VolksWagen'), 'Volkswagen'); assert.equal(marcaNome('GM - Chevrolet'), 'Chevrolet'); assert.equal(marcaNome('FIAT'), 'Fiat');
+  assert.equal(marcaOf({ name: 'VW Gol 1.0 2016' }), 'Volkswagen'); assert.equal(marcaOf({ name: 'Land Rover Evoque' }), 'Land Rover');
+  assert.equal(marcaOf({ name: 'Honda Civic', marca: 'HONDA' }), 'Honda'); assert.equal(marcaOf({ name: '' }), 'Sem montadora');
+});

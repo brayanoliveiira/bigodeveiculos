@@ -88,6 +88,24 @@ async function crossCheck(db, name, merged, selfId) {
 
 const round2 = (v) => Math.round(v * 100) / 100;
 
+/**
+ * Regras automáticas de local do carro (mexem em `values`, que é o que será gravado):
+ * vendido fica "Entregue" (sem oficina nem previsão de saída); voltou da venda para o estoque, sai de "Entregue";
+ * no Pátio / Loja sem data de entrada, vale a data de compra.
+ */
+function carRules(values, merged, row) {
+  if (merged.status === 'Vendido') {
+    if (merged.loc !== 'Entregue' || (row && row.status !== 'Vendido')) {
+      values.loc = 'Entregue'; values.locdet = null; values.locprev = null;
+      values.locdesde = merged.dvenda || null;
+    }
+    return;
+  }
+  let loc = merged.loc, desde = merged.locdesde;
+  if (loc === 'Entregue') { values.loc = loc = null; values.locdesde = desde = null; }
+  if (loc === 'Pátio / Loja' && isBlank(desde) && !isBlank(merged.dcompra)) values.locdesde = merged.dcompra;
+}
+
 /** Quanto da parcela já foi pago. Parcela marcada "Recebido" sem nenhum pagamento lançado (jeito antigo) conta como paga por inteiro. */
 async function paidOf(db, receipt, exceptPaymentId) {
   const pays = (await db.all('SELECT id, valor, date FROM payments WHERE receiptId = ? AND deleted = 0', receipt.id)).filter((p) => p.id !== exceptPaymentId);
@@ -121,6 +139,7 @@ async function createItem(db, user, name, input) {
       }
     }
     if (errors.length) throw new HttpError(400, errors[0], { errors });
+    if (name === 'cars') carRules(values, values, null);
     await crossCheck(db, name, values, null);
 
     const ts = now();
@@ -154,6 +173,7 @@ async function updateItem(db, user, name, id, input, opts = {}) {
     const { values, errors } = await validate(def, input, db, row);
     if (errors.length) throw new HttpError(400, errors[0], { errors });
 
+    if (name === 'cars') carRules(values, { ...row, ...values }, row);
     const p = await partners(db);
     const changedKeys = Object.keys(values).filter((k) => !sameValue(row[k], values[k]));
     if (!changedKeys.length) return { item: serialize(row), changed: false };
