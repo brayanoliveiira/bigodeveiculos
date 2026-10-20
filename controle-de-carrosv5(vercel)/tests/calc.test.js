@@ -129,10 +129,11 @@ t('consignado vendido com carro na troca que fica com o dono: comissão normal, 
 test('empréstimo com juros mensais: juros todo mês e devolução no vencimento', () => {
   const p = C.loanPlan({ valor: 57000, data: '2026-08-15', modo: 'Juros mensais', jurosMes: 2000, venc: '2026-12-15' });
   assert.deepEqual(p.map((x) => [x.tipo, x.due, x.valor]), [
-    ['Juros', '2026-09-15', 2000], ['Juros', '2026-10-15', 2000], ['Juros', '2026-11-15', 2000], ['Juros', '2026-12-15', 2000], ['Devolução', '2026-12-15', 57000]]);
+    ['Juros', '2026-09-15', 2000], ['Juros', '2026-10-15', 2000], ['Juros', '2026-11-15', 2000], ['Devolução', '2026-12-15', 59000]]);
+  assert.equal(p[3].label, 'Devolução + juros dez/26');
   // juros em %: 3% de 10.000 = 300 por mês; devolução fora do dia do empréstimo ainda paga o juros daquele mês
   const q = C.loanPlan({ valor: 10000, data: '2026-01-10', modo: 'Juros mensais', taxaMes: 0.03, venc: '2026-03-20' });
-  assert.deepEqual(q.map((x) => [x.tipo, x.due, x.valor]), [['Juros', '2026-02-10', 300], ['Juros', '2026-03-10', 300], ['Devolução', '2026-03-20', 10000]]);
+  assert.deepEqual(q.map((x) => [x.tipo, x.due, x.valor]), [['Juros', '2026-02-10', 300], ['Devolução', '2026-03-20', 10300]]);
   assert.deepEqual(C.loanPlan({ valor: 1000, data: '2026-01-10', modo: 'Juros mensais', jurosMes: 10 }), []); // sem vencimento
 });
 
@@ -193,7 +194,7 @@ test('juros pagos saem do lucro: metade de cada sócio, quem pagou do bolso rece
     { loanId: 1, tipo: 'Juros', due: '2026-09-15', paidAt: '2026-09-15', valor: 2000, status: 'Pago', quem: 'A' },
     { loanId: 1, tipo: 'Juros', due: '2026-10-15', paidAt: '2026-10-16', valor: 2000, status: 'Pago' },
     { loanId: 1, tipo: 'Juros', due: '2026-11-15', valor: 2000, status: 'Pendente' },
-    { loanId: 1, tipo: 'Devolução', due: '2026-12-15', valor: 57000, status: 'Pago', paidAt: '2026-12-15' }, // devolução não é juros
+    { loanId: 1, tipo: 'Devolução', due: '2026-12-15', valor: 57000, status: 'Pago', paidAt: '2026-12-15' }, // devolução sem juros junto: não é juros
     { loanId: 2, tipo: 'Parcela', due: '2026-11-20', paidAt: '2026-11-20', valor: 10878.17, status: 'Pago', quem: 'B' },
     { loanId: 2, tipo: 'Parcela', due: '2026-12-20', valor: 10878.17, status: 'Pendente' },
   ];
@@ -235,5 +236,26 @@ test('juros a partir da %: reais inteiros, arredondado para cima', () => {
   assert.equal(C.jurosDaTaxa(20000, 0.0585), 1170);
   assert.equal(C.jurosDaTaxa(10001, 0.03), 301); // 300,03 -> 301
   assert.ok(Object.is(C.jurosDaTaxa(57000, null), 0), 'sem % não vira -0 (aparecia "-R$ 0,00")');
-  assert.equal(C.loanPlan({ valor: 10001, data: '2026-01-10', modo: 'Juros mensais', taxaMes: 0.03, venc: '2026-02-10' })[0].valor, 301);
+  assert.equal(C.loanPlan({ valor: 10001, data: '2026-01-10', modo: 'Juros mensais', taxaMes: 0.03, venc: '2026-03-10' })[0].valor, 301);
+});
+
+test('devolução com juros do mês junto: só a parte acima do valor emprestado é juros', () => {
+  const loans = [{ id: 1, valor: 57000, modo: 'Juros mensais', jurosMes: 2000 }];
+  const pay = [
+    { loanId: 1, tipo: 'Juros', due: '2026-11-15', paidAt: '2026-11-15', valor: 2000, status: 'Pago' },
+    { loanId: 1, tipo: 'Devolução', due: '2026-12-15', paidAt: '2026-12-15', valor: 59000, status: 'Pago', quem: 'A' },
+  ];
+  const j = C.jurosPagos(pay, loans);
+  near(j.total, 4000, 'juros pagos'); near(j.porMes['2026-12'], 2000, 'dezembro'); near(j.pagoA, 1000 + 2000, 'A pagou a devolução');
+  const s = C.debts(pay, loans, [], HOJE);
+  near(s.jurosPagos, 4000, 'resumo'); near(s.porLoan[1].juros, 4000, 'juros total'); assert.equal(s.porLoan[1].quitado, true);
+});
+
+test('juros mensais com dia de vencimento escolhido: 57 mil em agosto, 2 mil em 09, 10 e 11, 59 mil em 12', () => {
+  const p = C.loanPlan({ valor: 57000, data: '2026-08-02', modo: 'Juros mensais', jurosMes: 2000, venc1: '2026-09-10', venc: '2026-12-10' });
+  assert.deepEqual(p.map((x) => [x.label, x.due, x.valor]), [
+    ['Juros set/26', '2026-09-10', 2000], ['Juros out/26', '2026-10-10', 2000], ['Juros nov/26', '2026-11-10', 2000], ['Devolução + juros dez/26', '2026-12-10', 59000]]);
+  // devolução em dia diferente do dos juros: o mês dela não ganha juros separado
+  const q = C.loanPlan({ valor: 57000, data: '2026-08-02', modo: 'Juros mensais', jurosMes: 2000, venc1: '2026-09-25', venc: '2026-12-05' });
+  assert.deepEqual(q.map((x) => x.due), ['2026-09-25', '2026-10-25', '2026-11-25', '2026-12-05']);
 });

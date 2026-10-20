@@ -1,5 +1,5 @@
 // Telas. Cada uma tem mount(el) (monta o esqueleto) e paint() (redesenha com os dados atuais).
-import { $, esc, brl, pct, dmy, today, stamp, sign, initials, marcaOf } from './util.js';
+import { $, esc, brl, money, pct, dmy, today, stamp, sign, initials, marcaOf } from './util.js';
 import { S, LISTS, names, itemOf, carName, liveCars, locClass } from './state.js';
 
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -33,7 +33,7 @@ function fipeNote(c) {
 
 function carCard(d) {
   const c = d.c, open = S.ui.open[c.id];
-  const locInfo = `<div class="locrow">${stPill(c.status)}${locPill(c)}${c.locdet ? `<span>${esc(c.locdet)}</span>` : ''}${d.diasLoc != null ? `<span class="mut">há ${d.diasLoc} dia${d.diasLoc === 1 ? '' : 's'}</span>` : ''}${d.atrasoLoc ? '<span class="pill late">Saída atrasada</span>' : d.saiLogo ? '<span class="pill soon">Sai em até 2 dias</span>' : ''}</div>`;
+  const locInfo = `<div class="locrow">${stPill(c.status)}${d.vendido ? '' : locPill(c)}${c.locdet ? `<span>${esc(c.locdet)}</span>` : ''}${d.diasLoc != null ? `<span class="mut">há ${d.diasLoc} dia${d.diasLoc === 1 ? '' : 's'}</span>` : ''}${d.atrasoLoc ? '<span class="pill late">Saída atrasada</span>' : d.saiLogo ? '<span class="pill soon">Sai em até 2 dias</span>' : ''}</div>`;
   const dv = S.DV.porCar[c.id];
   const apagar = dv && dv.falta > 0.004 ? `<div class="locrow"><button class="pill ${dv.atrasado > 0.004 ? 'late' : 'soon'}" data-act="dv-parc-car" data-id="${c.id}">A pagar ${brl(dv.falta)}${dv.prox ? ' · vence ' + dmy(dv.prox) : ''}</button></div>` : '';
   const lh = (S.loanHold || {})[c.id];
@@ -102,33 +102,36 @@ views.resumo = {
     }
     const al = [];
     if (s.parados) al.push(['carros', `${s.parados} ${s.parados === 1 ? 'carro parado' : 'carros parados'} há mais de ${S.settings.alerta} dias`]);
-    if (s.saidaVencida) al.push(['onde', `${s.saidaVencida} ${s.saidaVencida === 1 ? 'carro com saída do local atrasada' : 'carros com saída do local atrasada'}`]);
-    if (s.parcAtras) al.push(['vendas', `${s.parcAtras} ${s.parcAtras === 1 ? 'parcela de venda atrasada' : 'parcelas de venda atrasadas'} (${brl(s.atrasado)})`]);
-    if (s.repFalta > 0.004) al.push(['carros', `Falta repassar ${brl(s.repFalta)} a donos de carros consignados`]);
-    if (S.DV.atrasado > 0.004) al.push([Object.values(S.DV.porCar).some((g) => g.atrasado > 0.004) ? 'apagar' : 'emprestimos', `Conta a pagar atrasada: ${brl(S.DV.atrasado)}`]);
-    if (S.DV.quitAtrasadas) al.push(['emprestimos', `${S.DV.quitAtrasadas} ${S.DV.quitAtrasadas === 1 ? 'empréstimo passou' : 'empréstimos passaram'} da data prevista de quitação`]);
+    if (s.saidaVencida) al.push(['onde', `${s.saidaVencida} ${s.saidaVencida === 1 ? 'carro passou' : 'carros passaram'} da previsão de saída do local`]);
+    if (s.parcAtras) al.push(['vendas', `${brl(s.atrasado)} de clientes vencido`, true]);
+    if (s.repFalta > 0.004) al.push(['carros', `${brl(s.repFalta)} para repassar aos donos de consignados`]);
+    if (S.DV.atrasado > 0.004) al.push([Object.values(S.DV.porCar).some((g) => g.atrasado > 0.004) ? 'apagar' : 'emprestimos', `${brl(S.DV.atrasado)} a pagar vencido`, true]);
+    if (S.DV.quitAtrasadas) al.push(['emprestimos', `${S.DV.quitAtrasadas} ${S.DV.quitAtrasadas === 1 ? 'empréstimo passou' : 'empréstimos passaram'} da quitação prevista`, true]);
     if (s.prevAtrasados) al.push(['previstos', `${s.prevAtrasados} ${s.prevAtrasados === 1 ? 'gasto previsto atrasado' : 'gastos previstos atrasados'}`]);
-    let h = `<div class="alerts">${al.length ? al.map((a) => `<button class="alert" data-go="${a[0]}">${esc(a[1])}</button>`).join('') : '<div class="alert ok">Nenhum alerta no momento.</div>'}</div>`;
-    const K = (t, v, cls, hero) => `<div class="kpi${hero ? ' hero' : ''}"><dt>${esc(t)}</dt><dd class="${cls || ''}">${v}</dd></div>`;
-    const soc = Reports.porSocio(S.D, S.expenses, '', '', J), liqTxt = J.total ? 'Lucro líquido' : 'Lucro realizado';
-    h += '<dl class="grid kpis socios" style="margin:0 0 12px">' + ['A', 'B'].map((p) =>
-      K(`Investido hoje · ${nm(p)}`, brl(soc[p].estoque.inv), '', true) + K(`${liqTxt} · ${nm(p)}`, brl(soc[p].vendidos.lucLiq), sign(soc[p].vendidos.lucLiq), true)).join('') + '</dl>';
-    h += '<dl class="grid kpis" style="margin:0">' + (J.total ? K('Lucro líquido (após juros)', brl(s.lucroLiq), sign(s.lucroLiq), true) + K('Lucro dos carros vendidos', brl(s.lucro)) + K('Juros de empréstimos pagos', brl(J.total), 'neg') : K('Lucro realizado', brl(s.lucro), '', true)) + K('Em estoque / reservados', `${s.estoque} / ${s.reservados}`) + K('Vendidos', String(s.vendidos)) +
-      K('Dinheiro parado em estoque', brl(s.parado)) + K('Gastos previstos pendentes', brl(s.prevPend)) + (S.DV.jurosPend > 0.004 ? K('Lucro projetado do estoque (após juros a pagar)', brl(s.proj - S.DV.jurosPend), sign(s.proj - S.DV.jurosPend)) + K('Juros ainda a pagar', brl(S.DV.jurosPend), 'neg') : K('Lucro projetado do estoque', brl(s.proj), sign(s.proj))) +
-      K('Faturamento (inclui trocas)', brl(s.fatur)) + K('Margem média', pct(s.margem)) + K('Lucro médio por carro', brl(s.lucroMedio), sign(s.lucroMedio)) +
-      K('Deixou de ganhar (descontos)', brl(s.perdeu)) + K('Dias médios para vender', s.diasMedio == null ? '—' : Math.round(s.diasMedio) + ' dias') + K('Recebido em carro de troca', brl(s.trocaTot)) +
-      K('A receber de clientes', brl(s.aReceber)) + (S.DV.total > 0.004 ? K('A pagar (veículos e empréstimos)', brl(S.DV.total)) : '') + K('Parcelas atrasadas', brl(s.atrasado), s.atrasado > 0 ? 'neg' : '') + (s.consigEstoque || s.repFalta > 0.004 ? K('A repassar a donos', brl(s.repFalta), s.repFalta > 0.004 ? 'neg' : '') : '') + '</dl>';
-    h += `<section class="panel"><h2>Investido por sócio</h2><p class="mut small" style="margin:0 0 8px">Entrada + gastos que cada um pagou, mesmo antes de vender.</p><div class="tbl" style="border:0"><table class="compact" style="min-width:0"><thead><tr><th>Sócio</th><th class="r">Em estoque</th><th class="r">Em carros vendidos</th><th class="r">Total investido</th></tr></thead><tbody>${['A', 'B'].map((c) => `<tr><td>${esc(nm(c))}</td><td class="r num">${brl(soc[c].estoque.inv)}</td><td class="r num">${brl(soc[c].vendidos.inv)}</td><td class="r num"><b>${brl(soc[c].totalInvestido)}</b></td></tr>`).join('')}</tbody></table></div></section>`;
+    // Resumo: o painel escuro responde "como estamos?"; abaixo, o que precisa de atenção e os sócios. O detalhe fica no Gerencial.
+    const soc = Reports.porSocio(S.D, S.expenses, '', '', J);
+    const proj = s.proj - (S.DV.jurosPend || 0), emEst = s.estoque + s.reservados;
+    const R = (t, v, sub) => `<div><dt>${esc(t)}</dt><dd>${v}</dd>${sub ? `<dd class="sub">${sub}</dd>` : ''}</div>`;
+    let h = `<section class="hq" aria-label="Resumo"><p class="hq-l">Lucro líquido</p><p class="hq-big${s.lucroLiq < 0 ? ' neg' : ''}">${money(s.lucroLiq)}</p>` +
+      `<p class="hq-sub">${J.total ? `${brl(s.lucro)} dos carros vendidos, menos ${brl(J.total)} de juros` : `${s.vendidos} ${s.vendidos === 1 ? 'carro vendido' : 'carros vendidos'}`}</p><dl class="hq-row">` +
+      R('Em estoque', `${emEst} ${emEst === 1 ? 'carro' : 'carros'}`, `${brl(s.parado)} investidos`) +
+      R('Lucro projetado', money(proj), S.DV.jurosPend > 0.004 ? `após ${brl(S.DV.jurosPend)} de juros a pagar` : 'pelo preço de anúncio') +
+      R('A receber', money(s.aReceber), s.atrasado > 0.004 ? `<span class="neg">${brl(s.atrasado)} vencido</span>` : 'nada vencido') +
+      R('A pagar', money(S.DV.total), S.DV.total > 0.004 ? (S.DV.atrasado > 0.004 ? `<span class="neg">${brl(S.DV.atrasado)} vencido</span>` : `próximo em ${dmy(S.DV.prox)}`) : 'nada em aberto') +
+      R('Giro', s.diasMedio == null ? '—' : `${Math.round(s.diasMedio)} dias`, s.margem == null ? 'para vender' : `para vender, margem de ${pct(s.margem)}`) + '</dl></section>';
+
+    if (al.length) {
+      const PAG = { carros: 'Carros', onde: 'Onde estão', vendas: 'Vendas', apagar: 'Veículos a pagar', emprestimos: 'Empréstimos', previstos: 'Previstos' };
+      h += `<section class="sec"><div class="sec-h"><h2>Precisa de atenção</h2></div><ul class="att">` +
+        al.map((a) => `<li><button class="${a[2] ? 'bad' : ''}" data-go="${a[0]}"><span>${esc(a[1])}</span><span class="go">${esc(PAG[a[0]] || '')}</span></button></li>`).join('') + '</ul></section>';
+    }
     const [a0] = s.acerto;
-    h += '<div class="grid two"><section class="panel"><h2>Acerto entre sócios</h2><div class="tbl" style="border:0"><table class="compact" style="min-width:0"><thead><tr><th>Sócio</th><th class="r">Investiu</th><th class="r">Recebeu</th><th class="r">Lucro</th><th class="r">Saldo</th></tr></thead><tbody>' +
-      s.acerto.map((a) => `<tr><td>${esc(nm(a.nome))}</td><td class="r num">${brl(a.inv)}</td><td class="r num">${brl(a.rec)}</td><td class="r num">${brl(a.luc)}</td><td class="r num ${sign(a.saldo)}">${brl(a.saldo)}</td></tr>`).join('') + '</tbody></table></div>';
-    const msg = Math.abs(a0.saldo) < 0.005 ? 'Ninguém deve nada.' : a0.saldo > 0 ? `${nm('B')} paga ${brl(a0.saldo)} a ${nm('A')}.` : `${nm('A')} paga ${brl(-a0.saldo)} a ${nm('B')}.`;
-    h += `<p style="margin:10px 0 0"><b>${esc(msg)}</b></p><p class="mut" style="margin:4px 0 0;font-size:12.5px">${s.aReceber > 0.004 ? `Ainda falta entrar ${brl(s.aReceber)} de clientes: o saldo acima já considera tudo recebido. ` : ''}Só carros vendidos. Cada um recebe o que investiu mais a parte do lucro; desconta o dinheiro e o carro de troca que já pegou.${J.total ? ` Os juros de empréstimos pagos (${brl(J.total)}) saem do lucro, metade de cada um; quem pagou do bolso recebe de volta.` : ''}</p></section>`;
-    h += `<section class="panel"><h2>Lucro por mês</h2><div class="yearnav"><button class="btn sm" data-act="yr" data-d="-1" aria-label="Ano anterior">‹</button><b class="num">${S.year}</b><button class="btn sm" data-act="yr" data-d="1" aria-label="Próximo ano">›</button></div>${chart(s.months)}</section></div>`;
-    const catKeys = Object.keys(s.cat).sort((a, b) => s.cat[b] - s.cat[a]);
-    const mx = catKeys.length ? s.cat[catKeys[0]] : 1;
-    h += `<div class="grid two"><section class="panel"><h2>Gastos por pessoa</h2><div class="bars">${['A', 'B'].map((p) => `<div class="bar-row"><span>${esc(nm(p))}</span><span class="tr"><span class="fi" style="display:block;width:${s.gastoTotal ? Math.round(s.pessoas[p] / s.gastoTotal * 100) : 0}%"></span></span><span class="num">${brl(s.pessoas[p])}</span></div>`).join('')}</div><p class="mut" style="margin:10px 0 0">Total gasto: <b class="num">${brl(s.gastoTotal)}</b></p></section>`;
-    h += `<section class="panel"><h2>Gastos por categoria</h2>${catKeys.length ? `<div class="bars">${catKeys.map((k) => `<div class="bar-row"><span>${esc(k)}</span><span class="tr"><span class="fi" style="display:block;width:${Math.round(s.cat[k] / mx * 100)}%"></span></span><span class="num">${brl(s.cat[k])}</span></div>`).join('')}</div>` : '<p class="mut" style="margin:0">Nenhum gasto lançado.</p>'}</section></div>`;
+    const msg = Math.abs(a0.saldo) < 0.005 ? 'Ninguém deve nada a ninguém.' : a0.saldo > 0 ? `${nm('B')} deve ${brl(a0.saldo)} a ${nm('A')}.` : `${nm('A')} deve ${brl(-a0.saldo)} a ${nm('B')}.`;
+    h += `<div class="sec cols"><section><div class="sec-h"><h2>Sócios</h2></div><div class="duo">` +
+      ['A', 'B'].map((p) => `<div class="socio"><div class="nm">${esc(nm(p))}</div><div class="big${soc[p].vendidos.lucLiq < 0 ? ' neg' : ''}">${money(soc[p].vendidos.lucLiq)}</div><div class="sm">de lucro, com ${brl(soc[p].estoque.inv)} investidos hoje</div></div>`).join('') +
+      `</div><p class="acerto">${esc(msg)}</p></section>` +
+      `<section><div class="sec-h"><h2>Lucro líquido por mês</h2><div class="yearnav"><button class="btn sm" data-act="yr" data-d="-1" aria-label="Ano anterior">‹</button><b class="num">${S.year}</b><button class="btn sm" data-act="yr" data-d="1" aria-label="Próximo ano">›</button></div></div>${chart(s.months)}</section></div>`;
+    h += '<p class="more"><button class="linkbtn" data-go="gerencial">Todos os números no Gerencial</button></p>';
     el.innerHTML = h;
   },
 };

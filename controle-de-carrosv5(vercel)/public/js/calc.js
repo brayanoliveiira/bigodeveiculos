@@ -239,6 +239,8 @@ var Calc = (function () {
      'Juros mensais': juros todo mês (no dia do empréstimo) até a devolução; no vencimento, juros do mês + o valor emprestado.
      'Parcelado': tabela Price com juros de taxaMes ao mês (sem juros: parcelas iguais); 1º vencimento em venc ou um mês depois.
      Devolve [{ label, tipo, due, valor }]. */
+  /* Parte de juros de uma conta de empréstimo com juros mensais: a conta de juros inteira; na devolução, o que passa do valor emprestado. */
+  function jurosDaConta(x, l) { return x.tipo === 'Juros' ? N0(x.valor) : x.tipo === 'Devolução' ? Math.max(0, r2(N0(x.valor) - N0(l.valor))) : 0; }
   /* Juros do mês a partir da % (0 a 1): em reais inteiros, arredondado para cima (3,3% de 33.333 = R$ 1.100). */
   function jurosDaTaxa(valor, taxa) { var c = Math.round(N0(valor) * N0(taxa) * 100); return c > 0 ? Math.ceil(c / 100 - 0.001) : 0; }
   function loanPlan(l) {
@@ -247,14 +249,15 @@ var Calc = (function () {
     if (l.modo === 'Juros mensais') {
       if (!l.venc || l.venc <= l.data) return out;
       var j = num(l.jurosMes) !== null ? N0(l.jurosMes) : jurosDaTaxa(v, l.taxaMes);
-      for (i = 1; i <= 120; i++) {
-        var due = addMonths(l.data, i);
-        if (due > l.venc) break;
+      // Juros todo mês no dia do 1º vencimento (venc1; vazio = 1 mês depois do empréstimo), até o mês anterior à devolução.
+      var anchor = l.venc1 || l.data, shift = l.venc1 ? 0 : 1;
+      for (i = 0; i < 120; i++) {
+        var due = addMonths(anchor, i + shift);
+        if (due > l.venc || String(due).slice(0, 7) >= String(l.venc).slice(0, 7)) break;
         if (j > 0) out.push({ label: 'Juros ' + mesAno(due), tipo: 'Juros', due: due, valor: j });
       }
-      var last = out.length ? out[out.length - 1].due : null;
-      if (j > 0 && (!last || mesAno(last) !== mesAno(l.venc))) out.push({ label: 'Juros ' + mesAno(l.venc), tipo: 'Juros', due: l.venc, valor: j });
-      out.push({ label: 'Devolução', tipo: 'Devolução', due: l.venc, valor: v });
+      // No mês da devolução, paga numa vez só: o valor emprestado + os juros daquele mês.
+      out.push({ label: j > 0 ? 'Devolução + juros ' + mesAno(l.venc) : 'Devolução', tipo: 'Devolução', due: l.venc, valor: r2(v + j) });
       return out;
     }
     var n = Math.max(1, Math.min(120, Math.round(N0(l.nParc) || 1))), t = N0(l.taxaMes);
@@ -300,7 +303,7 @@ var Calc = (function () {
     live.forEach(function (x) {
       if (x.status !== 'Pago') return;
       var l = lv[x.loanId], v = N0(x.valor), t = tot[x.loanId];
-      var j = l.modo === 'Parcelado' ? (t > 0 ? v * Math.max(0, t - N0(l.valor)) / t : 0) : (x.tipo === 'Juros' ? v : 0);
+      var j = l.modo === 'Parcelado' ? (t > 0 ? v * Math.max(0, t - N0(l.valor)) / t : 0) : jurosDaConta(x, l);
       var d = x.paidAt || x.due;
       if (j <= 0 || (from && d < from) || (to && d > to)) return;
       var sp = splitOf(j, x.quem), k = String(d).slice(0, 7);
@@ -328,7 +331,8 @@ var Calc = (function () {
       if (x.loanId != null && x.status !== 'Pago' && x.tipo === 'Juros' && lv[x.loanId].quitPrev && x.due > lv[x.loanId].quitPrev) g.jurosDepois += v;
       if (x.status === 'Pago') {
         s.pago += v; g.pago += v; g.nPago++;
-        if (x.tipo === 'Juros') { s.jurosPagos += v; g.jurosPagos += v; }
+        var jx = x.loanId != null && lv[x.loanId].modo !== 'Parcelado' ? jurosDaConta(x, lv[x.loanId]) : 0;
+        if (jx > 0) { s.jurosPagos += jx; g.jurosPagos += jx; }
         return;
       }
       var sp = splitOf(v, x.quem);

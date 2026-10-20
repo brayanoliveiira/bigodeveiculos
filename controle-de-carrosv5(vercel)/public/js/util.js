@@ -21,6 +21,12 @@ export function parseMoney(s) {
   const n = parseFloat(s);
   return isNaN(n) ? NaN : n;
 }
+/** Valor grande com centavos discretos: "R$ 28.250<span class="cents">,00</span>" (HTML). */
+export function money(v) {
+  if (v == null) return '—';
+  const t = BRLF.format(v), i = t.lastIndexOf(',');
+  return i < 0 ? t : `${t.slice(0, i)}<span class="cents">${t.slice(i)}</span>`;
+}
 /** Número -> "R$ 2.000,00" (para preencher campos de valor). */
 export const moneyField = (v) => (v == null || v === '' || Number.isNaN(Number(v)) ? '' : BRLF.format(Number(v)));
 /** Máscara de digitação: "2000" vira "R$ 2.000"; depois da vírgula aceita 2 casas. Ao sair do campo completa ",00". */

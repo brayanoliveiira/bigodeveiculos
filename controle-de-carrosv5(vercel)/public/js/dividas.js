@@ -1,6 +1,6 @@
 // Abas Empréstimos e Veículos a pagar: dinheiro que pegamos emprestado e carros comprados a prazo.
 // As parcelas das duas ficam na mesma tabela (payables); o resumo vem de Calc.debts.
-import { $, esc, brl, dmy, today, parseMoney, toast, moneyField, table } from './util.js';
+import { $, esc, brl, money, dmy, today, parseMoney, toast, moneyField, table } from './util.js';
 import { S, LISTS, names, liveCars, itemOf } from './state.js';
 import { api } from './api.js';
 import { views } from './views.js';
@@ -9,7 +9,7 @@ import { openForm, confirmBox, closeModal, hooks } from './forms.js';
 const nm = (c) => names()[c] || '—';
 const quemTxt = (q) => (q ? nm(q) : 'Metade cada');
 const round2 = (v) => Math.round(v * 100) / 100;
-const K = (t, v, cls, hero) => `<div class="kpi${hero ? ' hero' : ''}"><dt>${esc(t)}</dt><dd class="${cls || ''}">${v}</dd></div>`;
+const K = (t, v, cls, hero, sub) => `<div class="kpi${hero ? ' hero' : ''}"><dt>${esc(t)}</dt><dd class="${cls || ''}">${v}</dd>${sub ? `<dd class="sub">${sub}</dd>` : ''}</div>`;
 const loans = () => (S.loans || []).filter((l) => !l.deleted);
 const carOf = (id) => (S.cars || []).find((c) => c.id === id);
 const PRAZOS = [30, 45, 60, 90, 120];
@@ -20,14 +20,14 @@ function condicao(l, g) {
   const tx = Calc.num(l.taxaMes);
   if (l.modo === 'Juros mensais') {
     const v = Calc.num(l.valor), j = Calc.num(l.jurosMes) != null ? Calc.num(l.jurosMes) : Calc.jurosDaTaxa(v, tx);
-    if (!(j > 0)) return `Juros não informado · devolve em ${dmy(l.venc)}`;
-    return `Juros de ${brl(j)}/mês${v > 0 ? ` (${(j / v * 100).toFixed(1).replace('.', ',')}% a.m.)` : ''} · devolve em ${dmy(l.venc)}`;
+    if (!(j > 0)) return `Juros não informado, devolve em ${dmy(l.venc)}`;
+    return `Juros de ${brl(j)}/mês${v > 0 ? ` (${(j / v * 100).toFixed(1).replace('.', ',')}% a.m.)` : ''}, devolve em ${dmy(l.venc)}`;
   }
   const parc = g && g.itens.length ? g.itens.find((x) => x.tipo === 'Parcela') : null;
-  return `${l.nParc || 1}x${parc ? ' de ' + brl(Calc.num(parc.valor)) : ''}${tx ? ` · ${(tx * 100).toFixed(1).replace('.', ',')}% a.m.` : ' · sem juros'}`;
+  return `${l.nParc || 1}x${parc ? ' de ' + brl(Calc.num(parc.valor)) : ''}${tx ? ` com ${(tx * 100).toFixed(1).replace('.', ',')}% a.m.` : ' sem juros'}`;
 }
 
-const carTxt = (c) => `${c.name}${c.placa ? ' · ' + c.placa : ''}`;
+const carTxt = (c) => `${c.name}${c.placa ? ' (' + c.placa + ')' : ''}`;
 /** Onde está o dinheiro do empréstimo hoje (segue as trocas a partir do carro comprado). */
 export function trailOf(l) {
   if (l.carId == null) return null;
@@ -54,8 +54,8 @@ function quitHtml(g) {
 function situacaoPill(g) {
   if (!g || !g.n) return '<span class="pill soon">Sem parcelas</span>';
   if (g.quitado || g.falta <= 0.004) return '<span class="pill ok">Quitado</span>';
-  if (g.atrasado > 0.004) return `<span class="pill late">Atrasado ${brl(g.atrasado)}</span>`;
-  return '<span class="pill soon">Em aberto</span>';
+  if (g.atrasado > 0.004) return `<span class="pill late">Vencido ${brl(g.atrasado)}</span>`;
+  return '<span class="pill ok">Em dia</span>';
 }
 
 /* ---------- Empréstimos ---------- */
@@ -81,21 +81,18 @@ views.emprestimos = {
     const fA = aberto.reduce((a, l) => a + (G(l) ? G(l).A : 0), 0), fB = aberto.reduce((a, l) => a + (G(l) ? G(l).B : 0), 0);
     const atras = aberto.reduce((a, l) => a + (G(l) ? G(l).atrasado : 0), 0);
     const prox = aberto.map((l) => G(l) && G(l).prox).filter(Boolean).sort()[0];
-    let h = '<dl class="grid kpis" style="margin:0">' + K('Devemos em empréstimos', brl(falta), '', true) + K(`${nm('A')} paga`, brl(fA)) + K(`${nm('B')} paga`, brl(fB)) +
-      K('Juros por mês (em aberto)', brl(DV.jurosMes)) + K('Juros já pagos', brl(aberto.concat(all.filter((l) => G(l) && G(l).quitado)).reduce((a, l) => a + (G(l) ? G(l).jurosPagos : 0), 0))) +
-      K('Atrasado', brl(atras), atras > 0.004 ? 'neg' : '') + K('Próximo vencimento', prox ? dmy(prox) : '—') +
-      K('Última quitação prevista', (() => { const q = aberto.map((l) => G(l) && G(l).quitPrev).filter(Boolean).sort().pop(); return q ? dmy(q) : '—'; })()) + '</dl>';
+    const jurosPagos = all.reduce((a, l) => a + (G(l) ? G(l).jurosPagos : 0), 0);
+    let h = '<dl class="grid kpis" style="margin:0">' + K('Devemos em empréstimos', money(falta), '', true, `${esc(nm('A'))} ${brl(fA)}, ${esc(nm('B'))} ${brl(fB)}`) +
+      K('Juros por mês', money(DV.jurosMes), '', false, `${brl(jurosPagos)} já pagos`) +
+      K('Vencido', money(atras), atras > 0.004 ? 'neg' : '', false, atras > 0.004 ? 'pagar o quanto antes' : 'nada vencido') +
+      K('Próximo vencimento', prox ? dmy(prox) : '—', '', false, (() => { const q = aberto.map((l) => G(l) && G(l).quitPrev).filter(Boolean).sort().pop(); return q ? `última quitação ${dmy(q)}` : ''; })()) + '</dl>';
     const rows = all.filter((l) => f === 'Todos' || (f === 'Quitados') === !!(G(l) && G(l).quitado))
       .sort((a, b) => String((G(a) && G(a).prox) || '9').localeCompare(String((G(b) && G(b).prox) || '9')) || String(b.data).localeCompare(String(a.data)));
     h += table([
-      { label: 'De quem', get: (l) => `<b>${esc(l.credor)}</b><div class="mut small">${dmy(l.data)}</div>${l.obs ? `<div class="small">${esc(l.obs)}</div>` : ''}` },
-      { label: 'Valor', r: true, get: (l) => brl(Calc.num(l.valor)) },
-      { label: 'Condição', get: (l) => `${esc(l.modo)}<div class="mut small">${esc(condicao(l, G(l)))}</div>` },
-      { label: 'Quem paga', get: (l) => esc(quemTxt(l.quem)) },
+      { label: 'De quem', get: (l) => `<b>${esc(l.credor)}</b><div class="mut small">${brl(Calc.num(l.valor))} em ${dmy(l.data)}</div>${l.obs ? `<div class="small">${esc(l.obs)}</div>` : ''}` },
+      { label: 'Condição', get: (l) => `${esc(condicao(l, G(l)))}<div class="mut small">${esc(l.modo)}, paga: ${esc(quemTxt(l.quem).toLowerCase())}</div>` },
       { label: 'Carro / onde está', get: (l) => trailHtml(l) },
-      { label: 'Juros total', r: true, get: (l) => brl(G(l) ? G(l).juros : null) },
-      { label: 'Pago', r: true, get: (l) => brl(G(l) ? G(l).pago : 0) },
-      { label: 'Falta', r: true, get: (l) => `<b>${brl(G(l) ? G(l).falta : 0)}</b>` },
+      { label: 'Falta', r: true, get: (l) => `<b>${brl(G(l) ? G(l).falta : 0)}</b><div class="mut small">pago ${brl(G(l) ? G(l).pago : 0)}</div>` },
       { label: 'Próximo', get: (l) => (G(l) && G(l).prox ? `${dmy(G(l).prox)}<div class="mut small">${brl(G(l).proxValor)}</div>` : '—') },
       { label: 'Quitação prevista', get: (l) => quitHtml(G(l)) },
       { label: 'Situação', get: (l) => situacaoPill(G(l)) },
@@ -115,7 +112,7 @@ views.apagar = {
     const box = $('#list');
     if (!box) return;
     const f = S.ui.af || 'Em aberto';
-    $('#pchips').innerHTML = ['Em aberto', 'Atrasadas', 'Quitadas', 'Todas'].map((x) => `<button class="chip" data-act="dv-af" data-id="${x}" aria-pressed="${f === x}">${x}</button>`).join('');
+    $('#pchips').innerHTML = ['Em aberto', 'Vencidas', 'Quitadas', 'Todas'].map((x) => `<button class="chip" data-act="dv-af" data-id="${x}" aria-pressed="${f === x}">${x}</button>`).join('');
     const DV = S.DV, ids = Object.keys(DV.porCar).map(Number).filter((id) => carOf(id));
     if (!ids.length) {
       box.innerHTML = '<div class="empty"><h3>Nenhum veículo a pagar</h3><p class="mut" style="margin:0;max-width:52ch">Comprou um carro para pagar depois (ex.: em 60 dias) ou parcelado? Cadastre aqui: valor, a quem pagar, quem paga (os dois ou só um) e a forma. A dívida continua aqui mesmo se o carro já foi vendido ou trocado.</p>' +
@@ -126,22 +123,19 @@ views.apagar = {
     const sum = (k) => gs.reduce((a, x) => a + x.g[k], 0);
     const em30 = Calc.addDays(today(), 30);
     const prox30 = gs.reduce((a, x) => a + x.g.itens.filter((p) => p.status !== 'Pago' && p.due >= today() && p.due <= em30).reduce((b, p) => b + Calc.num(p.valor), 0), 0);
-    let h = '<dl class="grid kpis" style="margin:0">' + K('Falta pagar em veículos', brl(sum('falta')), '', true) + K(`${nm('A')} paga`, brl(sum('A'))) + K(`${nm('B')} paga`, brl(sum('B'))) +
-      K('Atrasado', brl(sum('atrasado')), sum('atrasado') > 0.004 ? 'neg' : '') + K('Vence em 30 dias', brl(prox30)) + K('Já pago', brl(sum('pago'))) + '</dl>';
-    const rows = gs.filter((x) => f === 'Todas' || (f === 'Em aberto' && x.g.falta > 0.004) || (f === 'Atrasadas' && x.g.atrasado > 0.004) || (f === 'Quitadas' && x.g.falta <= 0.004))
+    let h = '<dl class="grid kpis" style="margin:0">' + K('Falta pagar em veículos', money(sum('falta')), '', true, `${esc(nm('A'))} ${brl(sum('A'))}, ${esc(nm('B'))} ${brl(sum('B'))}`) +
+      K('Vencido', money(sum('atrasado')), sum('atrasado') > 0.004 ? 'neg' : '', false, sum('atrasado') > 0.004 ? 'pagar o quanto antes' : 'nada vencido') +
+      K('Vence em 30 dias', money(prox30), '', false, '') + K('Já pago', money(sum('pago')), '', false, '') + '</dl>';
+    const rows = gs.filter((x) => f === 'Todas' || (f === 'Em aberto' && x.g.falta > 0.004) || (f === 'Vencidas' && x.g.atrasado > 0.004) || (f === 'Quitadas' && x.g.falta <= 0.004))
       .sort((a, b) => String(a.g.prox || '9').localeCompare(String(b.g.prox || '9')));
     const credores = (g) => [...new Set(g.itens.map((p) => p.credor).filter(Boolean))].join(', ') || '—';
     const formas = (g) => [...new Set(g.itens.map((p) => p.forma).filter(Boolean))].join(', ') || '—';
     const stCar = (c) => (c.status === 'Vendido' ? '<span class="pill">Já vendido</span>' : c.status === 'Reservado' ? '<span class="pill soon">Reservado</span>' : '<span class="pill">Em estoque</span>');
     h += table([
       { label: 'Carro', get: (x) => `<b>${esc(x.c.name)}</b><div class="mut small">${esc(x.c.placa || '')} ${stCar(x.c)}</div>` },
-      { label: 'A quem', get: (x) => esc(credores(x.g)) },
-      { label: 'Forma', get: (x) => `${esc(formas(x.g))}<div class="mut small">${x.g.n} ${x.g.n === 1 ? 'pagamento' : 'pagamentos'}</div>` },
-      { label: 'Total', r: true, get: (x) => brl(x.g.total) },
-      { label: 'Pago', r: true, get: (x) => brl(x.g.pago) },
-      { label: 'Falta', r: true, get: (x) => `<b>${brl(x.g.falta)}</b>` },
-      { label: nm('A'), r: true, get: (x) => brl(x.g.A) },
-      { label: nm('B'), r: true, get: (x) => brl(x.g.B) },
+      { label: 'A quem / forma', get: (x) => `${esc(credores(x.g))}<div class="mut small">${esc(formas(x.g))}, ${x.g.n} ${x.g.n === 1 ? 'pagamento' : 'pagamentos'}</div>` },
+      { label: 'Falta', r: true, get: (x) => `<b>${brl(x.g.falta)}</b><div class="mut small">de ${brl(x.g.total)}</div>` },
+      { label: 'Quem paga', r: true, get: (x) => `${esc(nm('A'))} ${brl(x.g.A)}<div>${esc(nm('B'))} ${brl(x.g.B)}</div>` },
       { label: 'Próximo', get: (x) => (x.g.prox ? `${dmy(x.g.prox)}<div class="mut small">${brl(x.g.proxValor)}</div>` : '—') },
       { label: 'Quitação', get: (x) => (x.g.fim ? (x.g.falta <= 0.004 ? `<span class="mut">${dmy(x.g.fim)}</span>` : dmy(x.g.fim)) : '—') },
       { label: 'Situação', get: (x) => situacaoPill({ ...x.g, quitado: x.g.falta <= 0.004 }) },
@@ -163,7 +157,7 @@ export function renderParcelas(owner) {
   const m = $('#modal');
   m.hidden = false;
   m.innerHTML = `<div class="sheet wide dv-sum"><h2>${title}</h2>` +
-    (isLoan ? `<p class="mut small" style="margin:0">${esc(l.modo)} · ${esc(condicao(l, g))} · quem paga: ${esc(quemTxt(l.quem))}${g && g.quitPrev ? ` · quitação prevista: ${dmy(g.quitPrev)}${g.quitPrevManual ? '' : ' (última parcela)'}` : ''}</p>${l.obs ? `<p class="small" style="margin:0"><b>Finalidade:</b> ${esc(l.obs)}</p>` : ''}${l.carId != null ? `<div class="small">${trailHtml(l)}</div>` : ''}` : '') +
+    (isLoan ? `<p class="mut small" style="margin:0">${esc(condicao(l, g))}. Quem paga: ${esc(quemTxt(l.quem).toLowerCase())}.${g && g.quitPrev ? ` Quitação prevista: ${dmy(g.quitPrev)}${g.quitPrevManual ? '' : ' (última parcela)'}` : ''}</p>${l.obs ? `<p class="small" style="margin:0"><b>Finalidade:</b> ${esc(l.obs)}</p>` : ''}${l.carId != null ? `<div class="small">${trailHtml(l)}</div>` : ''}` : '') +
     `<dl class="grid kpis" style="margin:0">${K('Total', brl(g ? g.total : 0))}${K('Pago', brl(g ? g.pago : 0))}${K('Falta', brl(g ? g.falta : 0), '', true)}${isLoan ? K('Juros total', brl(g ? g.juros : 0)) : ''}</dl>` +
     table([
       { label: 'Parcela', get: (p) => `<b>${esc(p.label || p.tipo || '—')}</b>${p.obs ? `<div class="mut small">${esc(p.obs)}</div>` : ''}` },
@@ -171,8 +165,8 @@ export function renderParcelas(owner) {
       { label: 'Valor', r: true, get: (p) => brl(Calc.num(p.valor)) },
       { label: 'Quem paga', get: (p) => esc(quemTxt(p.quem)) },
       { label: 'Forma', get: (p) => esc(p.forma || '—') },
-      { label: 'Situação', get: (p) => (p.status === 'Pago' ? `<span class="pill ok">Pago ${dmy(p.paidAt)}</span>` : p.due < today() ? '<span class="pill late">Atrasado</span>' : '<span class="pill soon">A pagar</span>') },
-      { label: '', get: (p) => (S.canWrite ? `<div class="row-acts">${p.status === 'Pago' ? `<button class="btn sm" data-act="dv-undo" data-id="${p.id}">Desfazer</button>` : `<button class="btn sm pri" data-act="dv-pay" data-id="${p.id}">Paguei</button>`}<button class="btn sm" data-act="dv-edit-pg" data-id="${p.id}">Editar</button><button class="btn sm" data-act="dv-del-pg" data-id="${p.id}">Excluir</button></div>` : '') },
+      { label: 'Situação', get: (p) => (p.status === 'Pago' ? `<span class="pill ok">Pago em ${dmy(p.paidAt)}</span>` : p.due < today() ? '<span class="pill late">Vencida</span>' : '<span class="pill">Em dia</span>') },
+      { label: '', get: (p) => (S.canWrite ? `<div class="row-acts">${p.status === 'Pago' ? `<button class="btn sm" data-act="dv-undo" data-id="${p.id}">Desfazer</button>` : `<button class="btn sm" data-act="dv-pay" data-id="${p.id}">Paguei</button>`}<button class="btn sm" data-act="dv-edit-pg" data-id="${p.id}">Editar</button><button class="btn sm" data-act="dv-del-pg" data-id="${p.id}">Excluir</button></div>` : '') },
     ], itens, null, 'Nenhuma parcela.') +
     `<div class="acts">${S.canWrite && isLoan ? `<button class="btn" data-act="dv-replan" data-id="${l.id}">Refazer parcelas pendentes</button>` : ''}${S.canWrite && !isLoan ? `<button class="btn" data-act="dv-new-cardebt" data-id="${c.id}">Acrescentar pagamento</button>` : ''}<button class="btn pri" data-x="cancel">Fechar</button></div></div>`;
   m.onclick = (ev) => { if (ev.target === m || ev.target.getAttribute?.('data-x') === 'cancel') { S.ui.dvOwner = null; closeModal(); } };
@@ -190,14 +184,15 @@ async function planLoan(l, replace) {
   await api('POST', '/api/payables/plan', { loanId: l.id, replace: !!replace, parts });
   await hooks.reload();
 }
-const PLAN_KEYS = ['valor', 'data', 'modo', 'jurosMes', 'taxaMes', 'nParc', 'venc', 'quem'];
+const PLAN_KEYS = ['valor', 'data', 'modo', 'jurosMes', 'taxaMes', 'nParc', 'venc', 'venc1', 'quem'];
 
 function loanForm(existing) {
   const before = existing ? JSON.stringify(PLAN_KEYS.map((k) => existing[k] ?? null)) : null;
   openForm('loan', existing || null, {
-    afterSave: async (item) => {
+    // Depois que o formulário fecha (openForm fecha o modal logo após afterSave), para a janela de parcelas abrir por cima.
+    afterSave: (item) => setTimeout(async () => {
       try { await planLoan(item, false); toast('Empréstimo salvo e parcelas programadas.'); renderParcelas({ loanId: item.id }); } catch (e) { toast(e.message); }
-    },
+    }, 0),
     onDone: existing ? async () => {
       const l = itemOf('loan', existing.id);
       if (!l || JSON.stringify(PLAN_KEYS.map((k) => l[k] ?? null)) === before) return;
@@ -219,7 +214,7 @@ function carDebtForm(carId) {
   m.innerHTML = `<form class="sheet wide" id="cdebt" novalidate><h2>${c0 ? 'Acrescentar pagamento — ' + esc(c0.name) : 'Nova conta de veículo'}</h2>
     <p class="mut small" style="margin:0">Para carro comprado a prazo ou parcelado. A dívida fica aqui até ser paga, mesmo que o carro já tenha sido vendido ou trocado.</p>
     <div class="fgrid">
-      <div class="field full"><label for="cd_car">Carro</label><select id="cd_car">${c0 ? '' : '<option value="">Escolha…</option>'}${cars.map((c) => `<option value="${c.id}"${c0 && c.id === c0.id ? ' selected' : ''}>${esc(c.name)}${c.placa ? ' · ' + esc(c.placa) : ''}</option>`).join('')}</select></div>
+      <div class="field full"><label for="cd_car">Carro</label><select id="cd_car">${c0 ? '' : '<option value="">Escolha…</option>'}${cars.map((c) => `<option value="${c.id}"${c0 && c.id === c0.id ? ' selected' : ''}>${esc(c.name)}${c.placa ? ' (' + esc(c.placa) + ')' : ''}</option>`).join('')}</select></div>
       <div class="field"><label for="cd_credor">A quem pagamos</label><input type="text" id="cd_credor" placeholder="Ex.: João (vendedor), loja X"></div>
       <div class="field"><label for="cd_total">Valor a pagar</label><input type="text" id="cd_total" inputmode="decimal" data-money value="${c0 && Calc.num(c0.entT) ? esc(moneyField(Calc.num(c0.entT))) : ''}"></div>
       <div class="field"><label for="cd_mode">Condição</label><select id="cd_mode"><option value="prazo" selected>A prazo (um pagamento depois)</option><option value="parcelado">Parcelado</option><option value="vista">À vista (já pago)</option></select></div>
