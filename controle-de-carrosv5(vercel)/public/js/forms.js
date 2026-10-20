@@ -52,13 +52,14 @@ const F = {
     { k: 'loc', label: 'Onde está agora', t: 'sel', opts: locOpts, blank: 'Não informado', showIf: notSold },
     { k: 'locdet', label: 'Local', t: 'text', showIf: (v) => notSold(v) && temLocal(v), hint: 'Ex.: Oficina do Zé, Funilaria Central.' },
     { k: 'locdesde', label: 'No local desde', t: 'date', showIf: notSold, hint: 'No Pátio / Loja, vazio = data da compra.' }, { k: 'locprev', label: 'Previsão de saída', t: 'date', showIf: (v) => notSold(v) && temLocal(v) },
-    { note: 'entregue', showIf: isSold },
     { k: 'status', label: 'Status', t: 'sel', opts: listOpts('status'), req: true },
     { g: 'Venda', showIf: isSold },
     { k: 'dvenda', label: 'Data da venda', t: 'date', showIf: isSold },
-    { k: 'vvenda', label: 'Valor total da venda (dinheiro + carro de troca)', t: 'money', showIf: isSold },
-    { k: 'quemrec', label: 'Quem ficou com o dinheiro', t: 'sel', opts: partnerOpts, blank: 'Metade cada (padrão)', showIf: isSold },
+    { k: 'vvenda', label: 'Valor total da venda', t: 'money', showIf: isSold, hint: 'Dinheiro + carro de troca.' },
+    { k: 'quemrec', label: 'Quem ficou com o dinheiro', t: 'sel', opts: () => [...partnerOpts(), ['X', 'Outra divisão']], blank: 'Metade cada (padrão)', showIf: isSold },
+    { k: 'recValA', label: `Quanto do dinheiro ficou com ${names().A}`, t: 'money', showIf: (v) => isSold(v) && v.quemrec === 'X', hint: 'O resto do dinheiro fica com o outro sócio.' },
     { k: 'comprador', label: 'Comprador', t: 'text', showIf: isSold },
+    { venda: true },
     { g: 'Divisão do lucro' },
     { k: 'divis', label: 'Como dividir o lucro deste carro', t: 'sel', opts: listOpts('divis'), blank: '50/50 (padrão)', full: true, hint: 'Em carro consignado, é a divisão da comissão. Para uma pessoa ficar com tudo, use Personalizado com 100% ou 0%.' },
     { k: 'pcust', label: `% do lucro de ${names().A}`, t: 'pct', showIf: (v) => v.divis === 'Personalizado' },
@@ -183,6 +184,8 @@ export function openForm(mode, existing, opts = {}) {
   let init;
   if (existing) {
     init = { ...existing };
+    if (def.col === 'cars' && mode === 'car' && !init.quemrec && Calc.num(init.recValA) != null) init.quemrec = 'X'; // outra divisão do dinheiro
+    if (opts.vender) { init.status = 'Vendido'; init.dvenda = init.dvenda || today(); } // botão Vender: abre já na venda
     if (mode === 'move') { init.locdesde = today(); init.locdet = ''; init.locprev = ''; }
   } else init = { ...(def.defaults ? def.defaults() : {}), ...(opts.prefill || {}) };
   const selfId = existing && def.col === 'cars' ? existing.id : -1;
@@ -191,6 +194,7 @@ export function openForm(mode, existing, opts = {}) {
   for (const f of def.fields()) {
     if (f.g) { h += `<div class="grp" data-g="${esc(f.g)}">${esc(f.g)}</div>`; continue; }
     if (f.split) { h += splitHtml(init); continue; }
+    if (f.venda) { h += vendaHtml(existing); continue; }
     if (f.compra) { h += compraHtml(existing); continue; }
     if (f.lookup) {
       h += `<div class="field full plk"><div class="plk-row">${S.placa ? '<button type="button" class="btn" id="plbtn">Consultar placa e FIPE</button>' : ''}<button type="button" class="btn" id="fpbtn">Buscar valor na tabela FIPE (grátis)</button></div>` +
@@ -201,7 +205,6 @@ export function openForm(mode, existing, opts = {}) {
         `<div class="field full"><label for="fp_ano">Ano e combustível</label><select id="fp_ano"></select></div></div><div id="fp_res" aria-live="polite"></div></div></div>`;
       continue;
     }
-    if (f.note === 'entregue') { h += '<div class="field full hint" data-k="_entregue">Carro vendido: o local passa a ser <b>Entregue</b>.</div>'; continue; }
     if (f.t === 'chk') { h += `<div class="field chk" data-k="${f.k}"><label><input type="checkbox" id="f_${f.k}"${init[f.k] ? ' checked' : ''}> ${esc(f.label)}</label></div>`; continue; }
     h += `<div class="field${f.full ? ' full' : ''}" data-k="${f.k}"><label for="f_${f.k}">${esc(f.label)}${f.req ? ' *' : ''}</label>${control(f, init[f.k], selfId)}${f.hint ? `<span class="hint">${esc(f.hint)}</span>` : ''}</div>`;
   }
@@ -218,7 +221,7 @@ export function openForm(mode, existing, opts = {}) {
       const node = f.g ? $(`.grp[data-g="${f.g}"]`) : $(`.field[data-k="${f.k || '_' + f.note}"]`);
       if (node) node.hidden = !show;
     }
-    if (mode === 'car') compraRefresh(cur);
+    if (mode === 'car') { compraRefresh(cur); vendaRefresh(cur); }
   };
   m.oninput = (ev) => {
     const el = ev.target;
@@ -245,6 +248,8 @@ export function openForm(mode, existing, opts = {}) {
   if (first) first.focus();
   wireClose(m);
   wireLookups(refresh);
+  if (mode === 'car') { wireTrocaPlaca(refresh); if (existing) $('#form').dataset.carId = existing.id; }
+  if (opts.vender) { const g = $('.grp[data-g="Venda"]'); if (g) g.scrollIntoView({ block: 'start' }); const vv = $('#f_vvenda'); if (vv) vv.focus({ preventScroll: true }); }
 
   let saving = false;
   $('#form').onsubmit = async (ev) => {
@@ -272,6 +277,7 @@ export function openForm(mode, existing, opts = {}) {
       send[f.k] = r.vals[f.k];
     }
     if (mode === 'car' && send.status === 'Vendido' && !send.dvenda) send.dvenda = today(); // sem data informada, vale hoje
+    if (mode === 'car' && 'quemrec' in send) { if (send.quemrec === 'X') { send.quemrec = null; if (send.recValA == null) send.recValA = 0; } else send.recValA = null; }
     if (mode === 'receipt') { if (send.status === 'Pendente') send.paidAt = null; else if (!send.paidAt) send.paidAt = today(); }
     if (mode === 'payable') { if (send.status === 'Pendente') send.paidAt = null; else if (!send.paidAt) send.paidAt = today(); }
     if (mode === 'loan' && send.modo === 'Juros mensais' && send.jurosMes == null && send.taxaMes == null) { $('#ferr').textContent = 'Informe os juros por mês, em R$ ou em %.'; return; }
@@ -286,20 +292,25 @@ export function openForm(mode, existing, opts = {}) {
     }
     const compra = mode === 'car' && !isConsig(r.vals) ? compraParts() : null;
     if (compra && compra.err) { $('#ferr').textContent = compra.err; return; }
+    const venda = mode === 'car' && send.status === 'Vendido' ? vendaDados() : null;
+    if (venda && venda.err) { $('#ferr').textContent = venda.err; return; }
+    if (venda && venda.troca) send.vvenda = venda.total;
     if (opts.extra) Object.assign(send, opts.extra);
     saving = true; $('#fsave').disabled = true;
     try {
       if (!existing) {
         const res = await api('POST', '/api/' + def.col, send);
         if (compra) await api('POST', '/api/payables/plan', { carId: res.item.id, parts: compra.parts });
-        toast(compra ? 'Salvo. O pagamento do carro foi para Veículos a pagar.' : 'Salvo.');
+        if (venda) await salvarVenda(res.item.id, venda, send);
+        toast(venda && (venda.troca || venda.parts) ? 'Salvo. Venda registrada com troca e recebimentos.' : compra ? 'Salvo. O pagamento do carro foi para Veículos a pagar.' : 'Salvo.');
         await hooks.reload();
         if (opts.afterSave) opts.afterSave(res.item);
       } else {
         const body = mode === 'move' ? { _action: 'move', ...send } : send;
         const res = await api('PATCH', `/api/${def.col}/${existing.id}`, body);
         if (compra) await api('POST', '/api/payables/plan', { carId: existing.id, parts: compra.parts });
-        toast(compra ? 'Salvo. O pagamento do carro foi para Veículos a pagar.' : res.changed ? 'Alteração salva.' : 'Nada mudou.');
+        if (venda) await salvarVenda(existing.id, venda, send);
+        toast(venda && (venda.troca || venda.parts) ? 'Salvo. Venda registrada com troca e recebimentos.' : compra ? 'Salvo. O pagamento do carro foi para Veículos a pagar.' : res.changed ? 'Alteração salva.' : 'Nada mudou.');
         await hooks.reload();
       }
       closeModal();
@@ -435,6 +446,123 @@ function compraRefresh(cur) {
     t += ` ${c.ent > 0 ? `Na compra pagamos <b>${brl(c.ent)}</b> e fica a pagar` : 'Fica a pagar'} ${falta.join(', ')}.`;
   }
   prev.innerHTML = t;
+}
+
+/* ---------- venda: carro na troca e como recebemos (dentro do cadastro do carro) ---------- */
+const PLACA_OK = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/;
+let trocaInfo = {}; // marca e cor do carro da troca, vindos da consulta de placa
+/** Campos da venda além dos do schema. Venda que já tem carro de troca ou parcelas mostra só o atalho. */
+function vendaHtml(existing) {
+  trocaInfo = {};
+  const opt = (arr, fmt, sel) => arr.map((x) => `<option value="${esc(x)}"${String(x) === String(sel) ? ' selected' : ''}>${esc(fmt(x))}</option>`).join('');
+  const filhos = existing ? (S.cars || []).filter((c) => !c.deleted && c.origemId === existing.id) : [];
+  const temRec = existing && (S.receipts || []).some((r) => !r.deleted && r.carId === existing.id);
+  let h = '';
+  if (filhos.length) h += `<div class="field full" data-vdbox><label>Carro na troca</label><span>${filhos.map((c) => `${esc(c.name)}${c.placa ? ' (' + esc(c.placa) + ')' : ''}, entrou por ${brl(Calc.num(c.entT))}`).join('; ')}</span></div>`;
+  else h += `<div class="field" data-vdbox><label for="vd_troca">Entrou carro na troca?</label><select id="vd_troca"><option value="">Não</option><option value="sim">Sim</option></select></div>
+    <div class="field" data-vd="troca"><label for="vd_cash">Recebido em dinheiro / Pix</label><input type="text" id="vd_cash" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field row-start" data-vd="troca"><label for="vd_placa">Placa do carro da troca</label><input type="text" id="vd_placa" style="text-transform:uppercase" autocapitalize="characters" spellcheck="false" autocomplete="off"><span class="hint" id="vd_plres">Com a placa completa, modelo e ano vêm sozinhos.</span></div>
+    <div class="field" data-vd="troca"><label for="vd_nome">Carro da troca</label><input type="text" id="vd_nome" autocomplete="off" placeholder="Ex.: VW Gol 1.0"></div>
+    <div class="field" data-vd="troca"><label for="vd_ano">Ano</label><input type="text" id="vd_ano" inputmode="numeric"></div>
+    <div class="field" data-vd="troca"><label for="vd_km">KM</label><input type="text" id="vd_km" inputmode="numeric" placeholder="Ex.: 85.000"></div>
+    <div class="field" data-vd="troca"><label for="vd_valor">Valor em que pegamos o carro</label><input type="text" id="vd_valor" inputmode="decimal" data-money placeholder="R$ 0,00"></div>`;
+  if (temRec) h += `<div class="field full" data-vdbox><label>Como recebemos</label><span class="hint">Recebimento já programado. <button type="button" class="linkbtn" data-act="receipts" data-id="${existing.id}">Ver recebimentos</button></span></div>`;
+  else h += `<div class="field row-start" data-vdbox><label for="vd_modo">Como recebemos o dinheiro</label><select id="vd_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option></select></div>
+    <div class="field" data-vd2="prazo parcelado"><label for="vd_ent">Entrada recebida na hora</label><input type="text" id="vd_ent" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-vd2="prazo"><label for="vd_prazo">Prazo do restante</label><select id="vd_prazo">${opt(CP_PRAZOS, (x) => x + ' dias', 30)}<option value="data">Data específica</option></select></div>
+    <div class="field" data-vd2="prazo-data"><label for="vd_data">Data do pagamento</label><input type="date" id="vd_data"></div>
+    <div class="field" data-vd2="parcelado"><label for="vd_n">Parcelas do restante</label><select id="vd_n">${opt(CP_PARCELAS, (x) => x + 'x', 2)}</select></div>
+    <div class="field" data-vd2="parcelado"><label for="vd_first">1º vencimento</label><input type="date" id="vd_first"><span class="hint">Vazio: 1 mês depois da venda.</span></div>`;
+  return h + '<div class="field full cp-prev" id="vd_prev"></div>';
+}
+/** Dados da venda lidos da tela: troca (carro novo), dinheiro e parcelas do recebimento. { err } quando falta algo. */
+function vendaDados() {
+  const vt = $('#vd_troca'), troca = !!vt && vt.value === 'sim';
+  let total = numDe('f_vvenda') || 0, trocaValor = 0;
+  const out = { troca: null, parts: null, total };
+  if (troca) {
+    const nome = $('#vd_nome').value.trim(), cash = numDe('vd_cash') || 0;
+    trocaValor = numDe('vd_valor') || 0;
+    if (!nome) return { err: 'Informe o carro que entrou na troca.' };
+    if (!(trocaValor > 0)) return { err: 'Informe o valor em que pegamos o carro da troca.' };
+    const placa = $('#vd_placa').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const ano = parseInt($('#vd_ano').value, 10), km = parseInt(String($('#vd_km').value).replace(/\D/g, ''), 10);
+    out.troca = { name: nome, placa: placa || null, ano: Number.isNaN(ano) ? null : ano, km: Number.isNaN(km) ? null : km, entT: trocaValor, marca: trocaInfo.marca || null, cor: trocaInfo.cor || null };
+    total = round2(cash + trocaValor); out.total = total;
+  } else {
+    // venda sem troca agora, mas com carro de troca já cadastrado: o dinheiro é o total menos esses carros
+    const box = document.querySelector('[data-vdbox] span');
+    if (box && !$('#vd_troca')) trocaValor = (S.cars || []).filter((c) => !c.deleted && c.origemId === Number(($('#form').dataset.carId || 0))).reduce((a, c) => a + (Calc.num(c.entT) || 0), 0);
+  }
+  const sel = $('#vd_modo'), modo = sel ? sel.value : '';
+  if (modo) {
+    const cash = round2(total - trocaValor), base = $('#f_dvenda').value || today();
+    if (!(cash > 0)) return { err: 'Não sobra dinheiro a receber: a venda foi só com troca. Escolha "À vista".' };
+    const ent = numDe('vd_ent') || 0;
+    if (ent >= cash) return { err: 'A entrada já cobre o dinheiro da venda. Escolha "À vista".' };
+    let dias = 0;
+    const dataFixa = modo === 'prazo' && $('#vd_prazo').value === 'data';
+    if (modo === 'prazo') {
+      if (dataFixa) { const d = $('#vd_data').value; if (!d) return { err: 'Informe a data do pagamento.' }; dias = Calc.diff(d, base); if (dias < 0) return { err: 'A data do pagamento é antes da data da venda.' }; }
+      else dias = Number($('#vd_prazo').value);
+    }
+    const q0 = $('#f_quemrec') ? $('#f_quemrec').value : '', quem = q0 === 'A' || q0 === 'B' ? q0 : null; // outra divisão: as parcelas seguem a divisão do carro
+    out.cash = cash; out.ent = ent;
+    out.parts = Calc.plan({ total: cash, base, mode: modo, entrada: ent, prazoDias: dias, n: Number($('#vd_n').value), primeiro: $('#vd_first').value || null })
+      .map((p) => ({ ...p, label: dataFixa && p.label !== 'Entrada' ? 'Pagamento' : p.label, quem }));
+  }
+  return out;
+}
+/** Depois de salvar a venda: cadastra o carro da troca (ligado a esta venda) e programa os recebimentos. */
+async function salvarVenda(carId, v, send) {
+  if (v.troca) await api('POST', '/api/cars', { ...v.troca, origemId: carId, dcompra: send.dvenda || today(), status: 'Em estoque', loc: 'Pátio / Loja' });
+  if (v.parts && v.parts.length) await api('POST', `/api/cars/${carId}/plan`, { parts: v.parts });
+}
+function vendaRefresh(cur) {
+  const sold = isSold(cur);
+  document.querySelectorAll('[data-vdbox]').forEach((el) => { el.hidden = !sold; });
+  const troca = !!$('#vd_troca') && $('#vd_troca').value === 'sim';
+  document.querySelectorAll('[data-vd]').forEach((el) => { el.hidden = !sold || !troca; });
+  const modo = $('#vd_modo') ? $('#vd_modo').value : '', dataFixa = modo === 'prazo' && $('#vd_prazo') && $('#vd_prazo').value === 'data';
+  document.querySelectorAll('[data-vd2]').forEach((el) => { const t = el.dataset.vd2.split(' '); el.hidden = !sold || !(t.includes(modo) || (dataFixa && t.includes('prazo-data'))); });
+  // com troca, o total da venda é a soma do dinheiro com o valor do carro (só leitura)
+  const vv = $('#f_vvenda');
+  if (vv) { vv.readOnly = troca; if (troca) vv.value = moneyField(round2((numDe('vd_cash') || 0) + (numDe('vd_valor') || 0))); }
+  const prev = $('#vd_prev');
+  if (!prev) return;
+  prev.hidden = !sold;
+  const total = numDe('f_vvenda');
+  if (!sold || !(total > 0)) { prev.textContent = ''; return; }
+  const v = vendaDados();
+  if (v.err) { prev.innerHTML = `<span class="mut">${esc(v.err)}</span>`; return; }
+  let t = troca ? `Venda de <b>${brl(v.total)}</b>: <b>${brl(round2(v.total - v.troca.entT))}</b> em dinheiro e <b>${brl(v.troca.entT)}</b> no ${esc(v.troca.name)}.` : `Venda de <b>${brl(total)}</b>.`;
+  if (v.parts) {
+    const fut = v.parts.filter((p) => p.status !== 'Recebido').map((p) => `<b>${brl(p.valor)}</b> em ${dmy(p.due)}`);
+    t += ` ${v.ent > 0 ? `Recebemos <b>${brl(v.ent)}</b> na hora e falta receber` : 'Falta receber'} ${fut.join(', ')}.`;
+  }
+  prev.innerHTML = t;
+}
+/** Placa do carro da troca: consulta sozinha quando completa. */
+function wireTrocaPlaca(refresh) {
+  const el = $('#vd_placa');
+  if (!el || !S.placa) return;
+  let last = '';
+  el.addEventListener('input', async () => {
+    const p = el.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!PLACA_OK.test(p) || p === last) return;
+    last = p;
+    const out = $('#vd_plres');
+    out.textContent = 'Consultando…';
+    try {
+      const d = await api('GET', `/api/placa/${encodeURIComponent(p)}`);
+      if (last !== p) return;
+      $('#vd_nome').value = d.nome || ''; $('#vd_ano').value = d.ano || '';
+      trocaInfo = { marca: marcaNome(d.marca), cor: d.cor || null };
+      const f = d.fipe && d.fipe[0];
+      out.textContent = f ? `FIPE de ${brl(f.valor)}${d.fipe.length > 1 ? ' (versão mais provável)' : ''}.` : 'Placa encontrada.';
+    } catch (e) { out.textContent = e.message; }
+    refresh();
+  });
 }
 
 const putField = (k, v, onlyEmpty) => {

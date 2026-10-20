@@ -241,6 +241,8 @@ document.addEventListener('click', async (ev) => {
     case 'print': window.print(); break;
     case 'new-car': openForm('car'); break;
     case 'edit-car': openForm('car', itemOf('car', id)); break;
+    case 'sell-car': it = itemOf('car', id); openForm('car', it, { vender: true, heading: `Vender ${it.name}` }); break;
+    case 'car-gastos': S.ui.gcar = String(id); go('gastos'); break;
     case 'move': openForm('move', itemOf('car', id)); break;
     case 'del-car': it = itemOf('car', id); confirmBox(`Excluir o carro "${it.name}"? Os gastos dele deixam de contar. Dá para restaurar pelo Histórico.`, () => del('car', it), 'Excluir'); break;
     case 'new-exp': openForm('expense', null, { prefill: S.ui.gcar ? { carId: S.ui.gcar } : {} }); break;

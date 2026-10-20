@@ -44,8 +44,10 @@ var Calc = (function () {
     }
     return out;
   }
+  /* Divide um valor entre os sócios: 'A', 'B', vazio (metade cada) ou um número de 0 a 1 (parte de A, "outra divisão"). */
   function splitOf(v, quem, quemrec) {
     var k = quem || quemrec;
+    if (typeof k === 'number') { var a = r2(v * k); return [a, v - a]; }
     return k === 'A' ? [v, 0] : (k === 'B' ? [0, v] : [v / 2, v / 2]);
   }
   function r2(v) { return Math.round(v * 100) / 100; }
@@ -71,11 +73,6 @@ var Calc = (function () {
     (receipts || []).filter(function (x) { return !x.deleted; }).forEach(function (x) {
       var d = out[x.carId]; if (d) d.rec.push(x);
     });
-    (repasses || []).filter(function (x) { return !x.deleted; }).forEach(function (x) {
-      var d = out[x.carId]; if (!d || !d.consig) return;
-      var v = N0(x.valor), sp = splitOf(v, x.quem, d.c.quemrec);
-      d.repPago += v; d.repPagoA += sp[0]; d.repPagoB += sp[1]; d.repasses.push(x);
-    });
     for (id in out) {
       var o = out[id].c.origemId;
       if (o && out[o] && String(o) !== id) {
@@ -89,11 +86,21 @@ var Calc = (function () {
         }
       }
     }
+    // Quem ficou com o dinheiro da venda: 'A', 'B', vazio (metade) ou, com recValA ("outra divisão"), a fração do dinheiro que ficou com A.
+    for (id in out) {
+      var dq = out[id], cq = dq.c, cashq = num(cq.vvenda) === null ? 0 : N0(cq.vvenda) - dq.troca;
+      dq.rq = cq.quemrec || (num(cq.recValA) !== null && cashq > 0 ? Math.max(0, Math.min(1, N0(cq.recValA) / cashq)) : null);
+    }
+    (repasses || []).filter(function (x) { return !x.deleted; }).forEach(function (x) {
+      var d = out[x.carId]; if (!d || !d.consig) return;
+      var v = N0(x.valor), sp = splitOf(v, x.quem, d.rq);
+      d.repPago += v; d.repPagoA += sp[0]; d.repPagoB += sp[1]; d.repasses.push(x);
+    });
     for (id in out) {
       var d = out[id], c = d.c;
       d.custo = d.entA + d.entB + d.repasse + d.gast; // consignado: o repasse ao dono é custo (sai da venda), mas ninguém o investiu
       d.repFalta = d.consig ? r2(Math.max(0, d.repasse - d.repPago - d.emEspecie)) : 0;
-      var rr = splitOf(d.repFalta, null, c.quemrec);
+      var rr = splitOf(d.repFalta, null, d.rq);
       d.repA = d.repPagoA + rr[0]; d.repB = d.repPagoB + rr[1]; // quanto cada sócio terá pago ao dono quando tudo for repassado
       d.pmin = d.custo + d.prev;
       d.pmeta = d.pmin * (1 + N0(settings.meta));
@@ -102,7 +109,7 @@ var Calc = (function () {
       var vv = num(c.vvenda), an = num(c.anun);
       d.cash = (d.vendido && vv !== null) ? vv - d.troca : null;
       if (d.cash !== null) {
-        d.recA = c.quemrec === P[0] ? d.cash : (c.quemrec === P[1] ? 0 : d.cash / 2);
+        d.recA = splitOf(d.cash, null, d.rq)[0];
         d.recB = d.cash - d.recA;
       } else { d.recA = null; d.recB = null; }
       // Recebimentos: sem nenhum cadastrado, a venda conta como recebida por inteiro (à vista).
@@ -115,17 +122,17 @@ var Calc = (function () {
           var entradas = [], pago = 0, pA = 0, pB = 0;
           if (pays.length) {
             pays.forEach(function (p) {
-              var pv = N0(p.valor), ps = splitOf(pv, p.quem || r.quem, c.quemrec);
+              var pv = N0(p.valor), ps = splitOf(pv, p.quem || r.quem, d.rq);
               pago += pv; pA += ps[0]; pB += ps[1]; entradas.push({ date: p.date, valor: pv, A: ps[0], B: ps[1], p: p });
             });
           } else if (r.status === 'Recebido') { // jeito antigo: marcada como recebida, sem pagamentos lançados
-            var ls = splitOf(v, r.quem, c.quemrec);
+            var ls = splitOf(v, r.quem, d.rq);
             pago = v; pA = ls[0]; pB = ls[1]; entradas.push({ date: r.paidAt || r.due, valor: v, A: ls[0], B: ls[1], p: null });
           }
           pago = r2(pago);
           var falta = r2(Math.max(0, v - pago)), atras = falta > 0.004 && r.due < today;
           var st = falta <= 0.004 ? 'Recebido' : (pago > 0.004 ? 'Parcial' : 'Pendente');
-          var fs = splitOf(falta, r.quem, c.quemrec);
+          var fs = splitOf(falta, r.quem, d.rq);
           pl += v; fA += pA + fs[0]; fB += pB + fs[1]; gA += pA; gB += pB; rc += Math.min(pago, v); pend += falta;
           if (falta > 0.004) {
             if (atras) { d.atrasado += falta; d.parcAtras++; }
@@ -134,7 +141,7 @@ var Calc = (function () {
           d.parcelas.push({ r: r, pagamentos: pays, entradas: entradas, pago: pago, falta: falta, st: st, atrasada: atras, ultimo: entradas.length ? entradas[entradas.length - 1].date : null });
         });
         var rest = d.cash - pl; if (Math.abs(rest) < 0.005) rest = 0;
-        var rs = splitOf(Math.max(0, rest), null, c.quemrec);
+        var rs = splitOf(Math.max(0, rest), null, d.rq);
         d.semProg = Math.max(0, rest); d.excesso = Math.max(0, -rest);
         d.recA = fA + rs[0]; d.recB = fB + rs[1];
         d.recebido = rc; d.recebidoA = gA; d.recebidoB = gB;

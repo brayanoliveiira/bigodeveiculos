@@ -243,3 +243,13 @@ test('juros mensais com dia de vencimento escolhido: 57 mil em agosto, 2 mil em 
   const q = C.loanPlan({ valor: 57000, data: '2026-08-02', modo: 'Juros mensais', jurosMes: 2000, venc1: '2026-09-25', venc: '2026-12-05' });
   assert.deepEqual(q.map((x) => x.due), ['2026-09-25', '2026-10-25', '2026-11-25', '2026-12-05']);
 });
+
+test('quem ficou com o dinheiro em outra divisão: valor de A, o resto com B (também nas parcelas)', () => {
+  const cars = [{ id: 1, name: 'Gol', entT: 20000, status: 'Vendido', vvenda: 30000, dvenda: '2026-10-10', recValA: 12000 },
+    { id: 2, name: 'Uno', entT: 5000, origemId: 1, status: 'Em estoque' }]; // 5 mil em troca: dinheiro de 25 mil
+  let d = C.compute(cars, [], [], { meta: 0.1 }, HOJE, [], [], [])[1];
+  near(d.cash, 25000, 'dinheiro'); near(d.recA, 12000, 'A'); near(d.recB, 13000, 'B');
+  const rec = [{ id: 7, carId: 1, due: '2026-11-10', valor: 25000, status: 'Pendente' }];
+  d = C.compute(cars, [], [], { meta: 0.1 }, HOJE, rec, [], [])[1];
+  near(d.recA, 12000, 'parcela pendente segue a divisão'); near(d.aReceberB, 13000, 'B a receber');
+});

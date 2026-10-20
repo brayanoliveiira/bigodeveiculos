@@ -46,6 +46,7 @@ const entities = {
       dvenda: { t: 'date', label: L('Data da venda') },
       vvenda: { t: 'money', label: L('Valor total da venda (dinheiro + carro de troca)') },
       quemrec: { t: 'partner', label: L('Quem ficou com o dinheiro') },
+      recValA: { t: 'money', label: (p) => `Dinheiro da venda que ficou com ${p.A}` },
       comprador: { t: 'text', max: 120, label: L('Comprador') },
       divis: { t: 'enum', values: lists.divis, label: L('Divisão do lucro') },
       pcust: { t: 'pct', label: (p) => `% do lucro de ${p.A}` },
