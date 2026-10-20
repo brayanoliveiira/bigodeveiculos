@@ -18,11 +18,12 @@ const notConsig = (v) => !isConsig(v);
 const F = {
   car: { col: 'cars', title: 'carro', fields: () => [
     { g: 'Identificação' },
-    { k: 'placa', label: 'Placa', t: 'text', upper: true }, { k: 'ano', label: 'Ano', t: 'int' },
+    { k: 'placa', label: 'Placa', t: 'text', upper: true, hint: 'Ao digitar a placa completa, modelo, ano, cor e FIPE são preenchidos sozinhos.' }, { k: 'ano', label: 'Ano', t: 'int' },
     { lookup: true },
     { k: 'name', label: 'Carro (modelo e versão)', t: 'text', req: true, full: true },
-    { k: 'cor', label: 'Cor', t: 'text' }, { k: 'fipe', label: 'Valor FIPE', t: 'money', hint: 'Vem da busca na tabela FIPE ou da placa. Também dá para digitar.' },
-    { k: 'fipeRef', label: 'Referência da FIPE', t: 'text', full: true, hint: 'Mês da tabela e código FIPE.' },
+    { k: 'cor', label: 'Cor', t: 'text' }, { k: 'km', label: 'KM (quilometragem)', t: 'int', hint: 'Ex.: 85.000' },
+    { k: 'fipe', label: 'Valor FIPE', t: 'money', hint: 'Vem da busca na tabela FIPE ou da placa. Também dá para digitar.' },
+    { k: 'fipeRef', label: 'Referência da FIPE', t: 'text', hint: 'Mês da tabela e código FIPE.' },
     { g: 'Compra' },
     { k: 'dcompra', label: 'Data da compra (ou de quando o carro chegou)', t: 'date' },
     { k: 'dono', label: 'Carro de terceiro? Dono do carro', t: 'text', full: true, hint: 'Deixe vazio se o carro é nosso. Preenchido = consignado: ninguém paga pelo carro, ele só fica aqui para vender.' },
@@ -121,7 +122,8 @@ function readForm(mode) {
     if (raw === '') v = null;
     else if (f.t === 'money') { v = parseMoney(raw); if (isNaN(v)) bad = bad || `Valor inválido em "${f.label}".`; }
     else if (f.t === 'pct') { v = parseMoney(raw); if (isNaN(v) || v < 0 || v > 100) bad = bad || `Use um percentual entre 0 e 100 em "${f.label}".`; else v = v / 100; }
-    else if (f.t === 'int') { v = parseInt(raw, 10); if (isNaN(v)) bad = bad || `Número inválido em "${f.label}".`; }
+    else if (f.t === 'int') { v = /^\d{1,3}([.\s]\d{3})+$/.test(raw) ? parseInt(raw.replace(/[.\s]/g, ''), 10) : Number(raw); // "85.000" = 85000
+      if (!Number.isInteger(v)) v = NaN; if (isNaN(v)) bad = bad || `Número inválido em "${f.label}".`; }
     else if (f.t === 'car') v = Number(raw);
     else v = f.upper ? raw.toUpperCase() : raw;
     vals[f.k] = v;
@@ -254,9 +256,15 @@ const putField = (k, v, onlyEmpty) => {
   if (!el || v == null || v === '' || (onlyEmpty && el.value.trim())) return;
   el.value = el.hasAttribute('data-money') ? moneyField(v) : String(v);
 };
-function applyFipe(o, refresh) {
-  putField('fipe', o ? o.valor : null);
-  putField('fipeRef', o ? [o.referencia, o.codigo && 'cód. ' + o.codigo].filter(Boolean).join(' · ') : null);
+/** Como putField, mas sem valor limpa o campo (placa nova: o dado antigo era de outro carro). */
+const setField = (k, v) => {
+  const el = $('#f_' + k);
+  if (!el) return;
+  if (v == null || v === '') el.value = ''; else putField(k, v);
+};
+function applyFipe(o, refresh, clear) {
+  const ref = o ? [o.referencia, o.codigo && 'cód. ' + o.codigo].filter(Boolean).join(' · ') : null;
+  if (clear) { setField('fipe', o ? o.valor : null); setField('fipeRef', ref); } else { putField('fipe', o ? o.valor : null); putField('fipeRef', ref); }
   refresh();
 }
 
@@ -280,21 +288,38 @@ function wirePlateLookup(refresh) {
     if (sel) sel.onchange = () => applyFipe(d.fipe[Number(sel.value)], refresh);
     $('#plagain').onclick = () => go(true);
   };
+  const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const PLACA_RE = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/;
+  let last = norm($('#f_placa').value); // placa já cadastrada: abrir a edição não consulta de novo
+  let seq = 0;
   async function go(fresh) {
     const placa = $('#f_placa').value.trim();
     if (!placa) { out.innerHTML = '<span class="err">Digite a placa primeiro.</span>'; return; }
+    const my = ++seq;
+    last = norm(placa);
     btn.disabled = true; out.innerHTML = '<span class="mut small">Consultando…</span>';
     try {
       const d = await api('GET', `/api/placa/${encodeURIComponent(placa)}${fresh ? '?fresh=1' : ''}`);
-      putField('placa', d.placa); putField('name', d.nome, true); putField('ano', d.ano, true); putField('cor', d.cor);
-      applyFipe(d.fipe[0], refresh);
+      if (my !== seq || norm($('#f_placa').value) !== d.placa) return; // a placa mudou enquanto consultava
+      // Placa consultada manda: modelo, ano, cor e FIPE são trocados pelos dela.
+      putField('placa', d.placa); putField('name', d.nome); setField('ano', d.ano); setField('cor', d.cor);
+      applyFipe(d.fipe[0], refresh, true);
       show(d);
     } catch (e) {
-      out.innerHTML = `<span class="err">${esc(e.message)}</span>`;
+      if (my !== seq) return;
+      // A FIPE antiga era de outra placa: não deixa ela ir junto.
+      applyFipe(null, refresh, true);
+      out.innerHTML = `<span class="err">${esc(e.message)}</span><span class="mut small"> Confira modelo e ano à mão.</span>`;
+    } finally {
+      if (my === seq) btn.disabled = false;
     }
-    btn.disabled = false;
   }
   btn.onclick = () => go(false);
+  // Digitou a placa completa (ou colou): consulta sozinho, sem precisar do botão.
+  $('#f_placa').addEventListener('input', () => {
+    const p = norm($('#f_placa').value);
+    if (PLACA_RE.test(p) && p !== last) go(false);
+  });
 }
 
 function wireFipePicker(refresh) {

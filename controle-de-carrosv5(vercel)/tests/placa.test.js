@@ -73,6 +73,10 @@ test('sem token: 503 e /api/config avisa a tela', async () => {
 test('carro guarda cor e FIPE', async () => {
   const r = await call('POST', '/api/cars', { name: 'VW Gol', placa: 'abc1d23', cor: 'Prata', fipe: 41250.5, fipeRef: 'out/2026 · 005002-7' });
   assert.equal(r.status, 201); assert.equal(r.json.item.fipe, 41250.5); assert.equal(r.json.item.placa, 'ABC1D23');
+  const k = await call('POST', '/api/cars', { name: 'Uno', km: 85000 });
+  assert.equal(k.status, 201); assert.equal(k.json.item.km, 85000);
+  assert.equal((await call('PATCH', `/api/cars/${k.json.item.id}`, { km: 91000 })).json.item.km, 91000);
+  assert.equal((await call('POST', '/api/cars', { name: 'Uno', km: -1 })).status, 400);
 });
 
 test('consulta grátis (sem token): POST com a placa, sem token na URL', async () => {
@@ -137,5 +141,10 @@ test('site zapcarconsulta: salvar carro com placa preenche FIPE e referência', 
     const j2 = await c2.json();
     assert.equal(j2.item.fipe, null); assert.equal(j2.fipeAuto.ok, false);
   }
+  // editar a placa (o formulário manda fipe vazio quando a consulta não trouxe nada): consulta a placa nova
+  const ids = (await (await fetch(b5 + '/api/data', { headers: { ...H, cookie: ck } })).json()).cars.filter((x) => x.placa === 'ZZZ9Z99').map((x) => x.id);
+  const e = await fetch(b5 + `/api/cars/${ids[0]}`, { method: 'PATCH', headers: { ...H, cookie: ck }, body: JSON.stringify({ placa: 'SSK3E54', fipe: null, fipeRef: null }) });
+  const je = await e.json();
+  assert.equal(je.item.fipe, 236560); assert.equal(je.item.ano, 2025); assert.equal(je.fipeAuto.ok, true);
   await a5.close();
 });

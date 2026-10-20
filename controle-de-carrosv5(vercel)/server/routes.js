@@ -175,7 +175,7 @@ function register(router, { db, cfg, limiter }) {
     ctx.status = 201;
     return r;
   });
-  /** Depois de salvar o carro com placa nova: consulta o site e grava valor FIPE, mês de referência e cor. Falha aqui nunca desfaz o cadastro. */
+  /** Depois de salvar o carro com placa nova: consulta o site e grava valor FIPE, mês de referência, cor e ano (estes dois só se vazios). Falha aqui nunca desfaz o cadastro. */
   async function autoFipe(ctx, item) {
     if (!item || !item.placa || (!cfg.placaToken && !cfg.placaSite && !cfg.placaFree && !(cfg.apibrasilBearer && cfg.apibrasilDevice))) return { item };
     try {
@@ -184,6 +184,7 @@ function register(router, { db, cfg, limiter }) {
       const patch = {};
       if (o) { patch.fipe = o.valor; patch.fipeRef = [o.referencia, o.codigo && 'cód. ' + o.codigo].filter(Boolean).join(' · ') || null; }
       if (!item.cor && d.cor) patch.cor = d.cor;
+      if (!item.ano && d.ano) patch.ano = d.ano;
       if (!Object.keys(patch).length) return { item, fipeAuto: { ok: false, msg: 'O site não trouxe o valor FIPE para esta placa.' } };
       const r = await S.updateItem(db, ctx.user, 'cars', item.id, patch);
       return { item: r.item, fipeAuto: { ok: !!o, msg: o ? 'Valor FIPE e referência preenchidos pela placa.' : 'Dados do carro preenchidos, mas sem valor FIPE.' } };
@@ -203,7 +204,7 @@ function register(router, { db, cfg, limiter }) {
     if (_action !== undefined && _action !== 'move') throw new HttpError(400, 'Ação desconhecida.');
     if (_action === 'move' && name !== 'cars') throw new HttpError(400, 'Só carros podem ser movidos.');
     const r = await S.updateItem(db, ctx.user, name, id(ctx), fields, { move: _action === 'move' });
-    if (name === 'cars' && !_action && r.changed && 'placa' in fields && !('fipe' in fields) && r.item.placa) return { ...r, ...(await autoFipe(ctx, r.item)) };
+    if (name === 'cars' && !_action && r.changed && 'placa' in fields && fields.fipe == null && r.item.placa) return { ...r, ...(await autoFipe(ctx, r.item)) };
     return r;
   });
   router.add('DELETE', '/api/:entity/:id', { role: 'write' }, async (ctx) => await S.setDeleted(db, ctx.user, entity(ctx), id(ctx), true));

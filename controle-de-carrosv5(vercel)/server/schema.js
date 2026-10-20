@@ -23,6 +23,7 @@ const entities = {
       placa: { t: 'text', max: 12, upper: true, label: L('Placa') },
       ano: { t: 'int', min: 1900, max: 2100, label: L('Ano') },
       cor: { t: 'text', max: 40, label: L('Cor') },
+      km: { t: 'int', min: 0, max: 3000000, label: L('KM') },
       fipe: { t: 'money', label: L('Valor FIPE') },
       fipeRef: { t: 'text', max: 80, label: L('Referência FIPE') },
       dcompra: { t: 'date', label: L('Data da compra') },

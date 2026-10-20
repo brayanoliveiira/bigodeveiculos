@@ -1,0 +1,64 @@
+# Roadmap: próximas atualizações
+
+Lista pedida em 20/10/2026, organizada em fases. Cada fase pode ir para produção sozinha.
+Regra de sempre: mudança de banco vai em `server/migrations/` **e** `server/migrations-pg/`, com teste em `tests/`.
+
+Legenda de tamanho: **P** = até meio dia · **M** = 1 a 2 dias · **G** = 3 dias ou mais.
+
+## Fase 0: feito
+
+| Item | O que mudou |
+|---|---|
+| Digitar a placa e preencher tudo | Com a placa completa, a consulta roda sozinha (sem botão). Modelo, ano, cor, FIPE e referência são **trocados** pelos da placa nova. Se a consulta falhar, a FIPE antiga é apagada, porque era de outro carro. No servidor, editar a placa sem FIPE também consulta e preenche FIPE, cor e ano. |
+| KM do carro | Campo `km` no cadastro (aceita "85.000"), mostrado no card. Migrations `007_km.sql` e `pg/002_km.sql`. |
+
+## Fase 1: cadastro e organização (rápido, quase só colunas novas)
+
+| # | Item | Tamanho | Como |
+|---|---|---|---|
+| 1.1 | "No local desde" padrão | P | Local `Pátio / Loja` sem data: usa a data de compra (`dcompra`). Regra no formulário e no servidor (`services.js`), para valer também na API. |
+| 1.2 | Vendido vira "Entregue" | P | Acrescentar `Entregue` em `lists.locs`. Ao marcar `Vendido`: `loc = 'Entregue'`, limpa `locdet` e `locprev`. A aba "Onde estão" deixa de mostrar vendidos. Migration ajusta os já vendidos. |
+| 1.3 | Classe do carro | P | Coluna `classe` (enum: Hatch, Sedan, SUV, Caminhonete, Utilitário, Outro). Filtro na lista e coluna nos relatórios. |
+| 1.4 | Leilão / sinistro | P | Colunas `leilao` e `sinistro` (0/1) e `histObs` (texto, aparece só se uma das caixas estiver marcada). Etiqueta vermelha no card. |
+| 1.5 | Agrupar por montadora | P | Coluna `marca`, já devolvida pela consulta de placa e pela tabela FIPE. Para os carros antigos, a migration extrai a marca do nome. A lista de carros ganha "Agrupar por montadora". |
+| 1.6 | Big numbers por sócio no Resumo | P | `Calc.summary().acerto` já calcula investido e lucro por sócio. Falta mostrar os cards: "Investido Brayan", "Lucro Brayan", "Investido Marcos", "Lucro Marcos" (em estoque e vendidos). |
+
+## Fase 2: dinheiro (o que entra, o que sai, de quem é)
+
+| # | Item | Tamanho | Como |
+|---|---|---|---|
+| 2.1 | Quem recebe, nos recebimentos | P | `calc.js` já tem `aReceberA` e `aReceberB`. Na tela de recebimentos: coluna "Quem recebe" (Brayan, Marcos ou ambos) e totais a receber de cada um. |
+| 2.2 | Divisão do lucro com retorno do investido | M | Na ficha e na venda: "Volta para Brayan = entrada + gastos + parte do lucro (ou comissão)", e o mesmo para o Marcos. O cálculo existe em parte (`acerto.saldo`); falta mostrar por carro, com testes de consignado e de troca. |
+| 2.3 | Venda com troca: Pix + carro | M | No grupo "Venda": campo "Recebido em dinheiro/Pix" e botão "Adicionar carro de troca", com um mini cadastro (placa com consulta automática, modelo, ano, KM, valor em que entrou). Ao salvar, o carro da troca é criado com `origemId`, e `vvenda = Pix + valor da troca`. Hoje é preciso cadastrar o carro da troca à parte. |
+| 2.4 | Forma de pagamento dos gastos | M | Colunas `forma` (Pix à vista, Dinheiro, Débito, Crédito à vista, Crédito parcelado, Boleto/a prazo), `parcelas` e `venc`. Relatório de gastos por forma. Gasto parcelado ou a prazo entra em "Contas a pagar" (2.5). |
+| 2.5 | Carros (e gastos) a pagar | G | Entidade nova `payables` (carro, origem `compra` ou `gasto`, vencimento, valor, status, quem paga, forma), com pagamentos parciais como os recebimentos. Aba "A pagar" com vencidos, próximos 7 e 30 dias, e total por sócio. O carro vendido ou trocado continua mostrando a dívida até quitar. O Resumo ganha "Caixa projetado = a receber − a pagar". |
+
+## Fase 3: controle do dia a dia
+
+| # | Item | Tamanho | Como |
+|---|---|---|---|
+| 3.1 | Pendências | M | Entidade `pendencias` (carro, tipo: Transferência, Documento, Vistoria, Outro; descrição, prazo, status). Etiqueta "Pendente" no card e contador no Resumo. Ao marcar como vendido, sugere criar "Transferência". |
+| 3.2 | Recompra | M | Placa que já existe (mesmo vendida): aviso "Este carro já passou por aqui: vendido em 12/05 para Fulano por R$ X". Botão "Cadastrar como recompra" cria um registro novo com `recompraDe`, etiqueta "Recompra", nova data e novo valor. O histórico do carro anterior fica intacto. |
+| 3.3 | Visão de consignados | M | Aba própria (hoje é um relatório no Gerencial): em estoque, dias parados, comissão projetada e realizada, % de comissão sobre a venda, a repassar por dono, ranking de donos. |
+
+## Fase 4: acesso e margem
+
+| # | Item | Tamanho | Como |
+|---|---|---|---|
+| 4.1 | Login com Google | G | OAuth 2.0 do Google (código + PKCE) sem dependência nova: `fetch` no endpoint de token e validação do `id_token` com `crypto`. Só entra quem já tiver o e-mail cadastrado em `users` (coluna `email`). A senha continua como alternativa. Na Vercel: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e a URL de retorno. |
+| 4.2 | Margem sobre a FIPE com custo completo | G | Plano separado: `docs/PLANO-MARGEM-FIPE.md`. Depende de 2.4 e 2.5 para somar tudo o que foi e será gasto. |
+
+## Ordem sugerida
+
+1. Fase 1 inteira (uma entrega, várias colunas, migrations juntas).
+2. 2.1, 2.2 e 2.3: mostram o dinheiro certo para cada sócio.
+3. 2.4 e 2.5: contas a pagar.
+4. Fase 3.
+5. 4.2 (margem), depois 4.1 (Google).
+
+## Decisões em aberto
+
+1. Carro comprado a prazo: o investido do sócio conta na compra ou só quando ele paga cada parcela?
+2. Pendências: lista com vários itens por carro (proposta) ou só uma caixa "pendente" com texto?
+3. Classes: a lista Hatch, Sedan, SUV, Caminhonete, Utilitário, Outro está boa?
+4. Login com Google: substitui a senha ou fica como opção ao lado dela?
