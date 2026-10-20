@@ -253,3 +253,16 @@ test('quem ficou com o dinheiro em outra divisão: valor de A, o resto com B (ta
   d = C.compute(cars, [], [], { meta: 0.1 }, HOJE, rec, [], [])[1];
   near(d.recA, 12000, 'parcela pendente segue a divisão'); near(d.aReceberB, 13000, 'B a receber');
 });
+
+test('empréstimo personalizado: juros proporcional em cada pagamento', () => {
+  const loans = [{ id: 1, valor: 20000, modo: 'Personalizado' }];
+  const pay = [
+    { loanId: 1, tipo: 'Parcela', due: '2026-11-01', paidAt: '2026-11-01', valor: 15000, status: 'Pago' },
+    { loanId: 1, tipo: 'Parcela', due: '2026-12-01', valor: 9000, status: 'Pendente' },
+  ];
+  const s = C.debts(pay, loans, [], HOJE);
+  near(s.porLoan[1].juros, 4000, 'juros total (24 mil pagos por 20 mil)');
+  near(s.porLoan[1].jurosPagos, 2500, 'parte de juros dos 15 mil pagos');
+  near(C.jurosPagos(pay, loans).total, 2500, 'sai do lucro');
+  near(s.jurosPend, 1500, 'juros ainda a pagar');
+});

@@ -4,7 +4,7 @@ import { $, esc, brl, money, dmy, today, parseMoney, toast, moneyField, table } 
 import { S, LISTS, names, liveCars, itemOf } from './state.js';
 import { api } from './api.js';
 import { views } from './views.js';
-import { openForm, confirmBox, closeModal, hooks } from './forms.js';
+import { openForm, confirmBox, closeModal, hooks, cronoHtml, cronoWire, cronoRows, planoLivre } from './forms.js';
 
 const nm = (c) => names()[c] || '—';
 const quemTxt = (q) => (q ? nm(q) : 'Metade cada');
@@ -22,6 +22,10 @@ function condicao(l, g) {
     const v = Calc.num(l.valor), j = Calc.num(l.jurosMes) != null ? Calc.num(l.jurosMes) : Calc.jurosDaTaxa(v, tx);
     if (!(j > 0)) return `Juros não informado, devolve em ${dmy(l.venc)}`;
     return `Juros de ${brl(j)}/mês${v > 0 ? ` (${(j / v * 100).toFixed(1).replace('.', ',')}% a.m.)` : ''}, devolve em ${dmy(l.venc)}`;
+  }
+  if (l.modo === 'Personalizado') {
+    const n = g ? g.n : 0, tot = g ? g.total : 0;
+    return n ? `${n} ${n === 1 ? 'pagamento' : 'pagamentos'} com datas e valores livres, total de ${brl(tot)}` : 'Datas e valores livres';
   }
   const parc = g && g.itens.length ? g.itens.find((x) => x.tipo === 'Parcela') : null;
   return `${l.nParc || 1}x${parc ? ' de ' + brl(Calc.num(parc.valor)) : ''}${tx ? ` com ${(tx * 100).toFixed(1).replace('.', ',')}% a.m.` : ' sem juros'}`;
@@ -160,7 +164,7 @@ export function renderParcelas(owner) {
       { label: 'Situação', get: (p) => (p.status === 'Pago' ? `<span class="pill ok">Pago em ${dmy(p.paidAt)}</span>` : p.due < today() ? '<span class="pill late">Vencida</span>' : '<span class="pill">Em dia</span>') },
       { label: '', get: (p) => (S.canWrite ? `<div class="row-acts">${p.status === 'Pago' ? `<button class="btn sm" data-act="dv-undo" data-id="${p.id}">Desfazer</button>` : `<button class="btn sm" data-act="dv-pay" data-id="${p.id}">Paguei</button>`}<button class="btn sm" data-act="dv-edit-pg" data-id="${p.id}">Editar</button><button class="btn sm" data-act="dv-del-pg" data-id="${p.id}">Excluir</button></div>` : '') },
     ], itens, null, 'Nenhuma parcela.') +
-    `<div class="acts">${S.canWrite && isLoan ? `<button class="btn" data-act="dv-replan" data-id="${l.id}">Refazer parcelas pendentes</button>` : ''}${S.canWrite && !isLoan ? `<button class="btn" data-act="dv-new-cardebt" data-id="${c.id}">Acrescentar pagamento</button>` : ''}<button class="btn pri" data-x="cancel">Fechar</button></div></div>`;
+    `<div class="acts">${S.canWrite && isLoan ? (l.modo === 'Personalizado' ? `<button class="btn" data-act="dv-edit-loan" data-id="${l.id}">Editar pagamentos</button>` : `<button class="btn" data-act="dv-replan" data-id="${l.id}">Refazer parcelas pendentes</button>`) : ''}${S.canWrite && !isLoan ? `<button class="btn" data-act="dv-new-cardebt" data-id="${c.id}">Acrescentar pagamento</button>` : ''}<button class="btn pri" data-x="cancel">Fechar</button></div></div>`;
   m.onclick = (ev) => { if (ev.target === m || ev.target.getAttribute?.('data-x') === 'cancel') { S.ui.dvOwner = null; closeModal(); } };
 }
 
@@ -170,8 +174,11 @@ function loanParts(l) {
   return Calc.loanPlan(l).filter((x) => !pagos.some((p) => p.tipo === x.tipo && p.due === x.due))
     .map((x) => ({ ...x, quem: l.quem || null, status: 'Pendente' }));
 }
-async function planLoan(l, replace) {
-  const parts = loanParts(l);
+async function planLoan(l, replace, livres) {
+  // Personalizado: as parcelas são as linhas que a pessoa montou (data e valor, já com juros).
+  // numeração continua depois das que já foram pagas (ex.: 2/3 e 3/3 quando a 1/3 está paga)
+  const pagas = replace ? (S.payables || []).filter((p) => !p.deleted && p.loanId === l.id && p.status === 'Pago').length : 0;
+  const parts = livres ? livres.map((r, i) => ({ label: `${pagas + i + 1}/${pagas + livres.length}`, tipo: 'Parcela', due: r.due, valor: r.valor, quem: l.quem || null, status: 'Pendente' })) : loanParts(l);
   if (!parts.length) { toast('Nada a programar: confira valor, datas e juros.'); return; }
   await api('POST', '/api/payables/plan', { loanId: l.id, replace: !!replace, parts });
   await hooks.reload();
@@ -180,13 +187,32 @@ const PLAN_KEYS = ['valor', 'data', 'modo', 'jurosMes', 'taxaMes', 'nParc', 'ven
 
 function loanForm(existing) {
   const before = existing ? JSON.stringify(PLAN_KEYS.map((k) => existing[k] ?? null)) : null;
+  // Personalizado: o editor começa com as parcelas ainda não pagas; as pagas ficam como estão.
+  const pendentes = existing ? (S.payables || []).filter((p) => !p.deleted && p.loanId === existing.id && p.status !== 'Pago')
+    .sort((a, b) => String(a.due).localeCompare(String(b.due))).map((p) => ({ due: p.due, valor: Calc.num(p.valor) })) : [];
+  let livres = null;
   openForm('loan', existing || null, {
+    cronoRows: existing && existing.modo === 'Personalizado' ? pendentes : null,
+    cronoPago: existing ? (S.payables || []).filter((p) => !p.deleted && p.loanId === existing.id && p.status === 'Pago').reduce((a, p) => a + (Calc.num(p.valor) || 0), 0) : 0,
+    beforeSave: (send) => {
+      livres = null;
+      if (send.modo !== 'Personalizado') return '';
+      const rows = cronoRows($('#lo_crono'));
+      if (!rows.length) return 'Adicione os pagamentos do empréstimo (data e valor).';
+      livres = rows;
+      return '';
+    },
     // Depois que o formulário fecha (openForm fecha o modal logo após afterSave), para a janela de parcelas abrir por cima.
     afterSave: (item) => setTimeout(async () => {
-      try { await planLoan(item, false); toast('Empréstimo salvo e parcelas programadas.'); renderParcelas({ loanId: item.id }); } catch (e) { toast(e.message); }
+      try { await planLoan(item, false, livres); toast('Empréstimo salvo e parcelas programadas.'); renderParcelas({ loanId: item.id }); } catch (e) { toast(e.message); }
     }, 0),
     onDone: existing ? async () => {
       const l = itemOf('loan', existing.id);
+      if (l && livres) { // personalizado: as parcelas pendentes passam a ser as do editor
+        const igual = JSON.stringify(livres) === JSON.stringify(pendentes);
+        if (!igual || l.modo !== existing.modo) { try { await planLoan(l, true, livres); toast('Parcelas atualizadas.'); renderParcelas({ loanId: l.id }); } catch (e) { toast(e.message); } }
+        return;
+      }
       if (!l || JSON.stringify(PLAN_KEYS.map((k) => l[k] ?? null)) === before) return;
       confirmBox('As condições do empréstimo mudaram. Refazer as parcelas que ainda não foram pagas? As pagas continuam como estão.', async () => {
         try { await planLoan(l, true); toast('Parcelas refeitas.'); setTimeout(() => renderParcelas({ loanId: l.id }), 0); } catch (e) { toast(e.message); }
@@ -209,18 +235,20 @@ function carDebtForm(carId) {
       <div class="field full"><label for="cd_car">Carro</label><select id="cd_car">${c0 ? '' : '<option value="">Escolha…</option>'}${cars.map((c) => `<option value="${c.id}"${c0 && c.id === c0.id ? ' selected' : ''}>${esc(c.name)}${c.placa ? ' (' + esc(c.placa) + ')' : ''}</option>`).join('')}</select></div>
       <div class="field"><label for="cd_credor">A quem pagamos</label><input type="text" id="cd_credor" placeholder="Ex.: João (vendedor), loja X"></div>
       <div class="field"><label for="cd_total">Valor a pagar</label><input type="text" id="cd_total" inputmode="decimal" data-money value="${c0 && Calc.num(c0.entT) ? esc(moneyField(Calc.num(c0.entT))) : ''}"></div>
-      <div class="field"><label for="cd_mode">Condição</label><select id="cd_mode"><option value="prazo" selected>A prazo (um pagamento depois)</option><option value="parcelado">Parcelado</option><option value="vista">À vista (já pago)</option></select></div>
+      <div class="field"><label for="cd_mode">Condição</label><select id="cd_mode"><option value="prazo" selected>A prazo (um pagamento depois)</option><option value="parcelado">Parcelado</option><option value="vista">À vista (já pago)</option><option value="livre">Personalizado</option></select></div>
       <div class="field"><label for="cd_base">Data da compra</label><input type="date" id="cd_base" value="${esc((c0 && c0.dcompra) || today())}"></div>
-      <div class="field" data-for="prazo parcelado"><label for="cd_ent">Entrada já paga</label><input type="text" id="cd_ent" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+      <div class="field" data-for="prazo parcelado livre"><label for="cd_ent">Entrada já paga</label><input type="text" id="cd_ent" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
       <div class="field" data-for="prazo"><label for="cd_dias">Prazo</label><select id="cd_dias">${opt(PRAZOS, (x) => x + ' dias', 60)}<option value="outro">Outro…</option></select></div>
       <div class="field" data-for="prazo"><label for="cd_dias2">Prazo em dias (se "Outro")</label><input type="text" id="cd_dias2" inputmode="numeric"></div>
       <div class="field" data-for="parcelado"><label for="cd_n">Número de parcelas</label><select id="cd_n">${opt(PARCELAS, (x) => x + 'x', 3)}</select></div>
       <div class="field" data-for="parcelado"><label for="cd_first">Primeiro vencimento</label><input type="date" id="cd_first"><span class="hint">Em branco: 1 mês depois da compra.</span></div>
+      ${cronoHtml('cd_crono', 'data-for="livre"')}
       <div class="field"><label for="cd_forma">Forma de pagamento</label><select id="cd_forma"><option value="">Não informada</option>${opt(LISTS.formasPag, (x) => x, 'Pix')}</select></div>
       <div class="field"><label for="cd_quem">Quem paga</label><select id="cd_quem"><option value="">Os dois (metade cada)</option><option value="A">Só ${esc(nm('A'))}</option><option value="B">Só ${esc(nm('B'))}</option></select></div>
     </div>
     <div id="cd_prev"></div><div class="err" id="ferr" role="alert"></div>
     <div class="acts"><button type="button" class="btn" data-x="cancel">Cancelar</button><button class="btn pri" type="submit" id="fsave">Salvar</button></div></form>`;
+  let planErr = '';
   const read = () => {
     const mode = $('#cd_mode').value, sel = $('#cd_dias').value;
     const ent = parseMoney($('#cd_ent').value);
@@ -229,6 +257,8 @@ function carDebtForm(carId) {
   const parts = () => {
     const r = read();
     if (!r.base || r.total == null || Number.isNaN(r.total) || r.total <= 0) return [];
+    if (r.mode === 'livre') { const pl = planoLivre($('#cd_crono'), { total: r.total, base: r.base, entrada: r.ent }); planErr = pl.err || ''; return (pl.rows || []).map((p) => ({ label: p.label, tipo: p.label === 'Entrada' ? 'Entrada' : 'Parcela', due: p.due, valor: p.valor, status: p.status === 'Recebido' ? 'Pago' : 'Pendente', paidAt: p.status === 'Recebido' ? p.paidAt : null })); }
+    planErr = '';
     return Calc.plan({ total: r.total, base: r.base, mode: r.mode, entrada: r.ent, prazoDias: Number.isNaN(r.dias) ? 0 : r.dias, n: r.n, primeiro: r.first || null })
       .map((p) => ({ label: p.label, tipo: p.label === 'À vista' ? 'À vista' : p.label === 'Entrada' ? 'Entrada' : 'Parcela', due: p.due, valor: p.valor, status: p.status === 'Recebido' ? 'Pago' : 'Pendente', paidAt: p.status === 'Recebido' ? p.paidAt : null }));
   };
@@ -239,13 +269,14 @@ function carDebtForm(carId) {
     const ps = parts(), sum = round2(ps.reduce((a, p) => a + p.valor, 0));
     $('#cd_prev').innerHTML = ps.length
       ? `<div class="tbl"><table class="compact" style="min-width:0"><thead><tr><th>Pagamento</th><th>Vencimento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>${ps.map((p) => `<tr><td>${esc(p.label)}</td><td class="num">${dmy(p.due)}</td><td class="r num">${brl(p.valor)}</td><td>${p.status === 'Pago' ? 'Pago' : 'A pagar'}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="2"><b>Total</b></td><td class="r num"><b>${brl(sum)}</b></td><td></td></tr></tfoot></table></div>`
-      : '<p class="mut small" style="margin:0">Preencha o valor e a data para ver os pagamentos.</p>';
+      : `<p class="mut small" style="margin:0">${esc(planErr || 'Preencha o valor e a data para ver os pagamentos.')}</p>`;
   };
   m.oninput = refresh; m.onchange = (ev) => {
     if (ev.target.id === 'cd_car') { const c = carOf(Number(ev.target.value)); if (c) { if (!$('#cd_total').value && Calc.num(c.entT)) $('#cd_total').value = moneyField(Calc.num(c.entT)); if (c.dcompra) $('#cd_base').value = c.dcompra; } }
     refresh();
   };
   refresh();
+  cronoWire($('#cd_crono'), refresh);
   m.onclick = (ev) => { if (ev.target === m || ev.target.getAttribute?.('data-x') === 'cancel') closeModal(); };
   let saving = false;
   $('#cdebt').onsubmit = async (ev) => {
@@ -253,7 +284,7 @@ function carDebtForm(carId) {
     if (saving) return;
     const carSel = Number($('#cd_car').value), r = read(), ps = parts();
     if (!carSel) { $('#ferr').textContent = 'Escolha o carro.'; return; }
-    if (!ps.length) { $('#ferr').textContent = 'Informe o valor a pagar e a data da compra.'; return; }
+    if (!ps.length) { $('#ferr').textContent = planErr || 'Informe o valor a pagar e a data da compra.'; return; }
     if (r.mode === 'prazo' && (Number.isNaN(r.dias) || r.dias < 0)) { $('#ferr').textContent = 'Informe o prazo em dias.'; return; }
     const extra = { credor: $('#cd_credor').value.trim() || null, forma: $('#cd_forma').value || null, quem: $('#cd_quem').value || null };
     saving = true; $('#fsave').disabled = true;

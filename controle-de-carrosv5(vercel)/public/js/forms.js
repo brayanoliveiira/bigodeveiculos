@@ -21,6 +21,7 @@ const splitCustom = () => { const e = document.getElementById('cp_split'); retur
 const temHist = (v) => !!(v.leilao || v.sinistro);
 const isJurosMes = (v) => v.modo === 'Juros mensais';
 const isParcelado = (v) => v.modo === 'Parcelado';
+const isLivre = (v) => v.modo === 'Personalizado';
 // 'Entregue' é posto pelo servidor quando o carro é vendido: não aparece para escolher.
 const locOpts = () => LISTS.locs.filter((l) => l !== 'Entregue').map((o) => [o, o]);
 
@@ -98,12 +99,13 @@ const F = {
   loan: { col: 'loans', title: 'empréstimo', fields: () => [
     { k: 'credor', label: 'De quem pegamos', t: 'text', req: true, hint: 'Ex.: Mãe, Nubank, Banco Inter.' }, { k: 'valor', label: 'Valor emprestado', t: 'money', req: true },
     { k: 'data', label: 'Data em que o dinheiro entrou', t: 'date', req: true }, { k: 'carId', label: 'Carro comprado com esse dinheiro', t: 'car', blank: 'Nenhum / vários' },
-    { k: 'modo', label: 'Como vamos pagar', t: 'sel', opts: listOpts('loanModes'), req: true, full: true, hint: 'Juros mensais: paga só os juros todo mês e devolve o valor inteiro no vencimento. Parcelado: parcelas iguais com juros (ex.: Nubank em 2x).' },
+    { k: 'modo', label: 'Como vamos pagar', t: 'sel', opts: listOpts('loanModes'), req: true, full: true, hint: 'Juros mensais: paga só os juros todo mês e devolve o valor inteiro no vencimento. Parcelado: parcelas iguais com juros (ex.: Nubank em 2x). Personalizado: você escolhe cada data e valor (já com os juros).' },
     { k: 'jurosMes', label: 'Juros por mês em R$', t: 'money', showIf: isJurosMes, hint: 'Ex.: R$ 2.000,00. A % ao lado é calculada sozinha.' },
-    { k: 'taxaMes', label: 'Juros por mês em %', t: 'pct', hint: 'Ex.: 5,8. Digitou a %? O valor em R$ é calculado sozinho. No parcelado, calcula as parcelas (tabela Price).' },
+    { k: 'taxaMes', label: 'Juros por mês em %', t: 'pct', showIf: (v) => !isLivre(v), hint: 'Ex.: 5,8. Digitou a %? O valor em R$ é calculado sozinho. No parcelado, calcula as parcelas (tabela Price).' },
     { k: 'nParc', label: 'Número de parcelas', t: 'int', showIf: isParcelado },
     { k: 'venc1', label: '1º vencimento dos juros', t: 'date', showIf: isJurosMes, hint: 'Os outros meses vencem no mesmo dia. Vazio = 1 mês depois do empréstimo.' },
-    { k: 'venc', label: 'Vencimento', t: 'date', hint: 'Juros mensais: dia da devolução (valor + juros do mês). Parcelado: 1º vencimento (vazio = 1 mês depois).' },
+    { crono: 'lo_crono', showIf: isLivre },
+    { k: 'venc', label: 'Vencimento', t: 'date', showIf: (v) => !isLivre(v), hint: 'Juros mensais: dia da devolução (valor + juros do mês). Parcelado: 1º vencimento (vazio = 1 mês depois).' },
     { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada (padrão)' },
     { k: 'obs', label: 'Finalidade (para que foi o dinheiro)', t: 'text', full: true, hint: 'Ex.: comprar a Kombi. Com o carro escolhido acima, o app acompanha as trocas: se a Kombi for vendida e entrar um Celta, o dinheiro passa a estar no Celta.' },
   ], defaults: () => ({ data: today(), modo: 'Juros mensais' }) },
@@ -194,6 +196,7 @@ export function openForm(mode, existing, opts = {}) {
   for (const f of def.fields()) {
     if (f.g) { h += `<div class="grp" data-g="${esc(f.g)}">${esc(f.g)}</div>`; continue; }
     if (f.split) { h += splitHtml(init); continue; }
+    if (f.crono) { h += cronoHtml(f.crono, `data-k="_${f.crono}" data-pago="${Number(opts.cronoPago) || 0}"`, opts.cronoRows); continue; }
     if (f.venda) { h += vendaHtml(existing); continue; }
     if (f.compra) { h += compraHtml(existing); continue; }
     if (f.lookup) {
@@ -218,10 +221,11 @@ export function openForm(mode, existing, opts = {}) {
     for (const f of def.fields()) {
       if (!f.showIf) continue;
       const show = !!f.showIf(cur);
-      const node = f.g ? $(`.grp[data-g="${f.g}"]`) : $(`.field[data-k="${f.k || '_' + f.note}"]`);
+      const node = f.g ? $(`.grp[data-g="${f.g}"]`) : $(`.field[data-k="${f.k || '_' + (f.note || f.crono)}"]`);
       if (node) node.hidden = !show;
     }
     if (mode === 'car') { compraRefresh(cur); vendaRefresh(cur); }
+    if (mode === 'loan') emprestimoSoma(cur);
   };
   m.oninput = (ev) => {
     const el = ev.target;
@@ -248,7 +252,8 @@ export function openForm(mode, existing, opts = {}) {
   if (first) first.focus();
   wireClose(m);
   wireLookups(refresh);
-  if (mode === 'car') { wireTrocaPlaca(refresh); if (existing) $('#form').dataset.carId = existing.id; }
+  if (mode === 'car') { wireTrocaPlaca(refresh); if (existing) $('#form').dataset.carId = existing.id; cronoWire($('#cp_crono'), refresh); cronoWire($('#vd_crono'), refresh); }
+  if (mode === 'loan') cronoWire($('#lo_crono'), refresh);
   if (opts.vender) { const g = $('.grp[data-g="Venda"]'); if (g) g.scrollIntoView({ block: 'start' }); const vv = $('#f_vvenda'); if (vv) vv.focus({ preventScroll: true }); }
 
   let saving = false;
@@ -295,6 +300,7 @@ export function openForm(mode, existing, opts = {}) {
     const venda = mode === 'car' && send.status === 'Vendido' ? vendaDados() : null;
     if (venda && venda.err) { $('#ferr').textContent = venda.err; return; }
     if (venda && venda.troca) send.vvenda = venda.total;
+    if (opts.beforeSave) { const e = opts.beforeSave(send); if (e) { $('#ferr').textContent = e; return; } } // lê o que não é campo do item (ex.: pagamentos personalizados)
     if (opts.extra) Object.assign(send, opts.extra);
     saving = true; $('#fsave').disabled = true;
     try {
@@ -322,6 +328,75 @@ export function openForm(mode, existing, opts = {}) {
   };
 }
 
+/* ---------- pagamentos personalizados (lista livre de data + valor) ---------- */
+// Usado onde existe à vista / a prazo / parcelado: compra e venda no cadastro, Programar recebimento e Conta de veículo.
+// Ex.: 30 mil numa data, depois 6 parcelas de 4 mil e mais 1 de mil.
+const linhaCrono = (due, valor) => `<div class="crono-row"><input type="date" class="cr-due" value="${esc(due || '')}" aria-label="Vencimento"><input type="text" class="cr-val" inputmode="decimal" data-money placeholder="R$ 0,00" value="${esc(valor ? moneyField(valor) : '')}" aria-label="Valor"><button type="button" class="btn sm" data-crono-del>Remover</button></div>`;
+/** HTML do editor. `attr` vai no contêiner (ex.: data-cp="livre") para a tela mostrar só no modo Personalizado. */
+export function cronoHtml(id, attr, rows) {
+  const ini = rows && rows.length ? rows.map((r) => linhaCrono(r.due, r.valor)).join('') : linhaCrono('', '');
+  return `<div class="field full crono" id="${id}" ${attr || ''}><label>Pagamentos</label><div class="crono-rows">${ini}</div>
+    <div class="crono-acts"><button type="button" class="btn sm" data-crono-add>Adicionar pagamento</button>
+    <span class="crono-lote">ou várias de uma vez: <input type="text" class="cr-n" inputmode="numeric" placeholder="6" aria-label="Quantas parcelas"> de <input type="text" class="cr-v" inputmode="decimal" data-money placeholder="R$ 0,00" aria-label="Valor de cada"> a partir de <input type="date" class="cr-d" aria-label="Primeiro vencimento"> <button type="button" class="btn sm" data-crono-lote>Adicionar</button></span></div>
+    <div class="hint crono-sum"></div></div>`;
+}
+/** Liga os botões do editor. onChange redesenha o resumo de quem usa. */
+export function cronoWire(box, onChange) {
+  if (!box) return;
+  box.addEventListener('click', (ev) => {
+    const t = ev.target;
+    const rows = box.querySelector('.crono-rows');
+    if (t.matches('[data-crono-del]')) { t.closest('.crono-row').remove(); if (!rows.children.length) rows.insertAdjacentHTML('beforeend', linhaCrono('', '')); }
+    else if (t.matches('[data-crono-add]')) {
+      // próxima linha: um mês depois da última, com o mesmo valor
+      const last = [...rows.querySelectorAll('.crono-row')].pop();
+      const d = last && last.querySelector('.cr-due').value, v = last && parseMoney(last.querySelector('.cr-val').value);
+      rows.insertAdjacentHTML('beforeend', linhaCrono(d ? Calc.addMonths(d, 1) : '', v > 0 ? v : ''));
+    } else if (t.matches('[data-crono-lote]')) {
+      const n = parseInt(box.querySelector('.cr-n').value, 10), v = parseMoney(box.querySelector('.cr-v').value), d = box.querySelector('.cr-d').value;
+      if (!(n > 0 && n <= 60) || !(v > 0) || !d) { box.querySelector('.crono-sum').textContent = 'Para adicionar várias: informe quantas, o valor de cada e a data da primeira.'; return; }
+      // tira a linha vazia do começo, se houver
+      [...rows.querySelectorAll('.crono-row')].forEach((r) => { if (!r.querySelector('.cr-due').value && !parseMoney(r.querySelector('.cr-val').value)) r.remove(); });
+      for (let i = 0; i < n; i++) rows.insertAdjacentHTML('beforeend', linhaCrono(Calc.addMonths(d, i), v));
+      box.querySelector('.cr-n').value = ''; box.querySelector('.cr-v').value = ''; box.querySelector('.cr-d').value = '';
+    } else return;
+    onChange();
+  });
+}
+/** Empréstimo personalizado: mostra a soma dos pagamentos e quanto disso é juros. */
+function emprestimoSoma(cur) {
+  const box = $('#lo_crono');
+  if (!box || box.hidden) return;
+  // na edição, as parcelas já pagas não aparecem no editor, mas entram na conta
+  const pago = Number(box.dataset.pago) || 0, ls = cronoRows(box), soma = round2(pago + ls.reduce((a, r) => a + r.valor, 0)), v = parseMoney(cur.valor) || 0;
+  const jaPago = pago > 0 ? ` (${brl(pago)} já pagos)` : '';
+  box.querySelector('.crono-sum').innerHTML = !ls.length ? 'Coloque cada pagamento já com os juros.'
+    : soma < v ? `Soma ${brl(soma)}${jaPago}: <span class="neg">menos que o valor emprestado (${brl(v)})</span>.`
+      : `Soma ${brl(soma)}${jaPago}: ${brl(round2(soma - v))} de juros sobre ${brl(v)}.`;
+}
+/** Linhas preenchidas (data e valor), em ordem de data. */
+export function cronoRows(box) {
+  if (!box) return [];
+  return [...box.querySelectorAll('.crono-row')].map((r) => ({ due: r.querySelector('.cr-due').value, valor: parseMoney(r.querySelector('.cr-val').value) }))
+    .filter((r) => r.due && r.valor > 0).sort((a, b) => a.due.localeCompare(b.due));
+}
+/**
+ * Plano no mesmo formato de Calc.plan (entrada como 'Recebido'), a partir das linhas do editor.
+ * Devolve { rows } ou { err } quando a soma não fecha com o que falta programar.
+ */
+export function planoLivre(box, { total, base, entrada }) {
+  const ls = cronoRows(box), ent = Math.max(0, entrada || 0), falta = round2(total - ent);
+  const soma = round2(ls.reduce((a, r) => a + r.valor, 0));
+  const sumEl = box && box.querySelector('.crono-sum');
+  if (sumEl) sumEl.innerHTML = ls.length ? `Soma ${brl(soma)} de ${brl(falta)}${Math.abs(soma - falta) > 0.004 ? (soma < falta ? `: faltam ${brl(round2(falta - soma))}` : `: passou ${brl(round2(soma - falta))}`) : ', fechou.'}` : '';
+  if (!ls.length) return { err: 'Adicione os pagamentos (data e valor).' };
+  if (Math.abs(soma - falta) > 0.004) return { err: `Os pagamentos somam ${brl(soma)}, mas o valor a programar é ${brl(falta)}.` };
+  const rows = [];
+  if (ent > 0) rows.push({ label: 'Entrada', due: base, valor: round2(ent), status: 'Recebido', paidAt: base });
+  ls.forEach((r, i) => rows.push({ label: `${i + 1}/${ls.length}`, due: r.due, valor: round2(r.valor), status: 'Pendente', paidAt: null }));
+  return { rows };
+}
+
 /* ---------- compra a prazo (dentro do cadastro do carro) ---------- */
 const CP_PRAZOS = [30, 45, 60, 90];
 const CP_PARCELAS = [2, 3, 4, 5, 6, 8, 10, 12];
@@ -336,17 +411,18 @@ function compraHtml(existing) {
   const resumo = '<div class="field full cp-prev" id="cp_prev"></div>';
   if (tem) return `<div class="field" data-cpbox><label>Como vamos pagar</label><span class="hint">Já tem pagamento programado. <button type="button" class="linkbtn" data-act="dv-parc-car" data-id="${existing.id}">Ver os pagamentos</button></span></div>${resumo}`;
   const opt = (arr, fmt, sel) => arr.map((x) => `<option value="${esc(x)}"${String(x) === String(sel) ? ' selected' : ''}>${esc(fmt(x))}</option>`).join('');
-  return `<div class="field" data-cpbox><label for="cp_modo">Como vamos pagar</label><select id="cp_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option></select></div>
-    <div class="field" data-cp="prazo parcelado"><label for="cp_ent">Pago na hora</label><input type="text" id="cp_ent" inputmode="decimal" data-money placeholder="R$ 0,00"><span class="hint">Vazio se não pagamos nada na compra.</span></div>
+  return `<div class="field" data-cpbox><label for="cp_modo">Como vamos pagar</label><select id="cp_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option><option value="livre">Personalizado</option></select></div>
+    <div class="field" data-cp="prazo parcelado livre"><label for="cp_ent">Pago na hora</label><input type="text" id="cp_ent" inputmode="decimal" data-money placeholder="R$ 0,00"><span class="hint">Vazio se não pagamos nada na compra.</span></div>
     <div class="field" data-cp="prazo"><label for="cp_prazo">Prazo do restante</label><select id="cp_prazo">${opt(CP_PRAZOS, (x) => x + ' dias', 30)}<option value="data">Data específica</option></select></div>
     <div class="field" data-cp="prazo-data"><label for="cp_data">Data do pagamento</label><input type="date" id="cp_data"></div>
     <div class="field" data-cp="parcelado"><label for="cp_n">Parcelas do restante</label><select id="cp_n">${opt(CP_PARCELAS, (x) => x + 'x', 2)}</select></div>
     <div class="field" data-cp="parcelado"><label for="cp_first">1º vencimento</label><input type="date" id="cp_first"><span class="hint">Vazio: 1 mês depois da compra.</span></div>
-    <div class="field" data-cp="prazo parcelado"><label for="cp_credor">A quem vamos pagar</label><input type="text" id="cp_credor" placeholder="Ex.: João, antigo dono" autocomplete="off"></div>
-    <div class="field" data-cp="prazo parcelado custom"><label for="cp_quemrest">Quem paga o restante</label><select id="cp_quemrest"><option value="">Os dois (metade cada)</option><option value="A">Só ${esc(names().A)}</option><option value="B">Só ${esc(names().B)}</option><option value="custom">Outra divisão</option></select></div>
-    <div class="field row-start" data-cp="prazo parcelado custom restcustom"><label for="cp_restA">Quanto ${esc(names().A)} paga do restante</label><input type="text" id="cp_restA" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
-    <div class="field" data-cp="prazo parcelado custom restcustom"><label for="cp_restB">Quanto ${esc(names().B)} paga do restante</label><input type="text" id="cp_restB" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
-    <div class="field row-start" data-cp="prazo parcelado"><label for="cp_forma">Forma de pagamento</label><select id="cp_forma"><option value="">Não informada</option>${opt(LISTS.formasPag || [], (x) => x, 'Pix')}</select></div>
+    ${cronoHtml('cp_crono', 'data-cp="livre"')}
+    <div class="field" data-cp="prazo parcelado livre"><label for="cp_credor">A quem vamos pagar</label><input type="text" id="cp_credor" placeholder="Ex.: João, antigo dono" autocomplete="off"></div>
+    <div class="field" data-cp="prazo parcelado livre custom"><label for="cp_quemrest">Quem paga o restante</label><select id="cp_quemrest"><option value="">Os dois (metade cada)</option><option value="A">Só ${esc(names().A)}</option><option value="B">Só ${esc(names().B)}</option><option value="custom">Outra divisão</option></select></div>
+    <div class="field row-start" data-cp="prazo parcelado livre custom restcustom"><label for="cp_restA">Quanto ${esc(names().A)} paga do restante</label><input type="text" id="cp_restA" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-cp="prazo parcelado livre custom restcustom"><label for="cp_restB">Quanto ${esc(names().B)} paga do restante</label><input type="text" id="cp_restB" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field row-start" data-cp="prazo parcelado livre"><label for="cp_forma">Forma de pagamento</label><select id="cp_forma"><option value="">Não informada</option>${opt(LISTS.formasPag || [], (x) => x, 'Pix')}</select></div>
     ${resumo}`;
 }
 /** Divisão do carro entre os sócios, como o cálculo usa (metade cada ou os valores informados). */
@@ -388,7 +464,9 @@ function compraParts() {
   const quemRest = custom ? ($('#cp_quemrest').value || null) : null;
   if (quemRest === 'custom' && Math.abs(e.restA + e.restB - e.rest) > 0.004) return { err: `O restante é ${brl(e.rest)}, mas ${names().A} e ${names().B} somam ${brl(e.restA + e.restB)}.` };
   const extra = { credor: $('#cp_credor').value.trim() || null, forma: $('#cp_forma').value || null };
-  const rows = Calc.plan({ total, base, mode: modo, entrada: ent, prazoDias: dias, n: Number($('#cp_n').value), primeiro: $('#cp_first').value || null });
+  let rows;
+  if (modo === 'livre') { const pl = planoLivre($('#cp_crono'), { total, base, entrada: ent }); if (pl.err) return { err: pl.err }; rows = pl.rows; }
+  else rows = Calc.plan({ total, base, mode: modo, entrada: ent, prazoDias: dias, n: Number($('#cp_n').value), primeiro: $('#cp_first').value || null });
   const parts = [];
   for (const p of rows) {
     if (p.label === 'Entrada') {
@@ -442,8 +520,8 @@ function compraRefresh(cur) {
   else if (c) {
     const porData = {};
     c.parts.filter((p) => p.status !== 'Pago').forEach((p) => { porData[p.due] = round2((porData[p.due] || 0) + p.valor); }); // uma data, um valor (mesmo dividido entre os sócios)
-    const falta = Object.keys(porData).sort().map((d) => `<b>${brl(porData[d])}</b> em ${dmy(d)}`);
-    t += ` ${c.ent > 0 ? `Na compra pagamos <b>${brl(c.ent)}</b> e fica a pagar` : 'Fica a pagar'} ${falta.join(', ')}.`;
+    const falta = Object.keys(porData).sort().map((d) => ({ due: d, valor: porData[d] }));
+    t += ` ${c.ent > 0 ? `Na compra pagamos <b>${brl(c.ent)}</b> e fica a pagar` : 'Fica a pagar'} ${datasTexto(falta)}.`;
   }
   prev.innerHTML = t;
 }
@@ -467,12 +545,13 @@ function vendaHtml(existing) {
     <div class="field" data-vd="troca"><label for="vd_km">KM</label><input type="text" id="vd_km" inputmode="numeric" placeholder="Ex.: 85.000"></div>
     <div class="field" data-vd="troca"><label for="vd_valor">Valor em que pegamos o carro</label><input type="text" id="vd_valor" inputmode="decimal" data-money placeholder="R$ 0,00"></div>`;
   if (temRec) h += `<div class="field full" data-vdbox><label>Como recebemos</label><span class="hint">Recebimento já programado. <button type="button" class="linkbtn" data-act="receipts" data-id="${existing.id}">Ver recebimentos</button></span></div>`;
-  else h += `<div class="field row-start" data-vdbox><label for="vd_modo">Como recebemos o dinheiro</label><select id="vd_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option></select></div>
-    <div class="field" data-vd2="prazo parcelado"><label for="vd_ent">Entrada recebida na hora</label><input type="text" id="vd_ent" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+  else h += `<div class="field row-start" data-vdbox><label for="vd_modo">Como recebemos o dinheiro</label><select id="vd_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option><option value="livre">Personalizado</option></select></div>
+    <div class="field" data-vd2="prazo parcelado livre"><label for="vd_ent">Entrada recebida na hora</label><input type="text" id="vd_ent" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
     <div class="field" data-vd2="prazo"><label for="vd_prazo">Prazo do restante</label><select id="vd_prazo">${opt(CP_PRAZOS, (x) => x + ' dias', 30)}<option value="data">Data específica</option></select></div>
     <div class="field" data-vd2="prazo-data"><label for="vd_data">Data do pagamento</label><input type="date" id="vd_data"></div>
     <div class="field" data-vd2="parcelado"><label for="vd_n">Parcelas do restante</label><select id="vd_n">${opt(CP_PARCELAS, (x) => x + 'x', 2)}</select></div>
-    <div class="field" data-vd2="parcelado"><label for="vd_first">1º vencimento</label><input type="date" id="vd_first"><span class="hint">Vazio: 1 mês depois da venda.</span></div>`;
+    <div class="field" data-vd2="parcelado"><label for="vd_first">1º vencimento</label><input type="date" id="vd_first"><span class="hint">Vazio: 1 mês depois da venda.</span></div>
+    ${cronoHtml('vd_crono', 'data-vd2="livre"')}`;
   return h + '<div class="field full cp-prev" id="vd_prev"></div>';
 }
 /** Dados da venda lidos da tela: troca (carro novo), dinheiro e parcelas do recebimento. { err } quando falta algo. */
@@ -508,8 +587,10 @@ function vendaDados() {
     }
     const q0 = $('#f_quemrec') ? $('#f_quemrec').value : '', quem = q0 === 'A' || q0 === 'B' ? q0 : null; // outra divisão: as parcelas seguem a divisão do carro
     out.cash = cash; out.ent = ent;
-    out.parts = Calc.plan({ total: cash, base, mode: modo, entrada: ent, prazoDias: dias, n: Number($('#vd_n').value), primeiro: $('#vd_first').value || null })
-      .map((p) => ({ ...p, label: dataFixa && p.label !== 'Entrada' ? 'Pagamento' : p.label, quem }));
+    let rows;
+    if (modo === 'livre') { const pl = planoLivre($('#vd_crono'), { total: cash, base, entrada: ent }); if (pl.err) return { err: pl.err }; rows = pl.rows; }
+    else rows = Calc.plan({ total: cash, base, mode: modo, entrada: ent, prazoDias: dias, n: Number($('#vd_n').value), primeiro: $('#vd_first').value || null });
+    out.parts = rows.map((p) => ({ ...p, label: dataFixa && p.label !== 'Entrada' ? 'Pagamento' : p.label, quem }));
   }
   return out;
 }
@@ -537,8 +618,8 @@ function vendaRefresh(cur) {
   if (v.err) { prev.innerHTML = `<span class="mut">${esc(v.err)}</span>`; return; }
   let t = troca ? `Venda de <b>${brl(v.total)}</b>: <b>${brl(round2(v.total - v.troca.entT))}</b> em dinheiro e <b>${brl(v.troca.entT)}</b> no ${esc(v.troca.name)}.` : `Venda de <b>${brl(total)}</b>.`;
   if (v.parts) {
-    const fut = v.parts.filter((p) => p.status !== 'Recebido').map((p) => `<b>${brl(p.valor)}</b> em ${dmy(p.due)}`);
-    t += ` ${v.ent > 0 ? `Recebemos <b>${brl(v.ent)}</b> na hora e falta receber` : 'Falta receber'} ${fut.join(', ')}.`;
+    const fut = v.parts.filter((p) => p.status !== 'Recebido').sort((a, b) => a.due.localeCompare(b.due));
+    t += ` ${v.ent > 0 ? `Recebemos <b>${brl(v.ent)}</b> na hora e falta receber` : 'Falta receber'} ${datasTexto(fut)}.`;
   }
   prev.innerHTML = t;
 }
@@ -563,6 +644,13 @@ function wireTrocaPlaca(refresh) {
     } catch (e) { out.textContent = e.message; }
     refresh();
   });
+}
+
+/** "R$ 30.000,00 em 05/11/2026, ..." até 3 datas; mais que isso, "R$ 55.000,00 em 8 pagamentos, de 05/11/2026 a 05/06/2027". */
+function datasTexto(lista) {
+  if (lista.length <= 3) return lista.map((p) => `<b>${brl(p.valor)}</b> em ${dmy(p.due)}`).join(', ');
+  const tot = round2(lista.reduce((a, p) => a + p.valor, 0));
+  return `<b>${brl(tot)}</b> em ${lista.length} pagamentos, de ${dmy(lista[0].due)} a ${dmy(lista[lista.length - 1].due)}`;
 }
 
 const putField = (k, v, onlyEmpty) => {
@@ -721,20 +809,22 @@ export function openPlanForm(carId, onDone) {
   m.innerHTML = `<form class="sheet wide" id="plan" novalidate><h2>Programar recebimento — ${esc(d.c.name)}</h2>
     <p class="mut small" style="margin:0">Venda de ${brl(Calc.num(d.c.vvenda))}${d.troca > 0 ? `, com ${brl(d.troca)} em carro de troca` : ''}. Aqui você define como o <b>dinheiro</b> (${brl(d.cash)}) entra.${d.nParc > 0 ? ' As parcelas ainda sem pagamento serão substituídas; as que já receberam algo (mesmo em parte) ficam.' : ''}</p>
     <div class="fgrid">
-      <div class="field"><label for="pl_mode">Forma de recebimento</label><select id="pl_mode"><option value="vista">À vista</option><option value="prazo">A prazo (um pagamento depois)</option><option value="parcelado" selected>Parcelado</option></select></div>
+      <div class="field"><label for="pl_mode">Forma de recebimento</label><select id="pl_mode"><option value="vista">À vista</option><option value="prazo">A prazo (um pagamento depois)</option><option value="parcelado" selected>Parcelado</option><option value="livre">Personalizado</option></select></div>
       <div class="field"><label for="pl_total">Valor a programar</label><input type="text" id="pl_total" inputmode="decimal" data-money value="${esc(moneyField(falta))}"></div>
       <div class="field"><label for="pl_base">Data da venda</label><input type="date" id="pl_base" value="${esc(d.c.dvenda || today())}"></div>
-      <div class="field" data-for="prazo parcelado"><label for="pl_ent">Entrada recebida na hora (pix)</label><input type="text" id="pl_ent" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+      <div class="field" data-for="prazo parcelado livre"><label for="pl_ent">Entrada recebida na hora (pix)</label><input type="text" id="pl_ent" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
       <div class="field" data-for="prazo"><label for="pl_dias">Prazo</label><select id="pl_dias">${opt(PRAZOS, (x) => x + ' dias')}<option value="outro">Outro…</option></select></div>
       <div class="field" data-for="prazo"><label for="pl_dias2">Prazo em dias (se "Outro")</label><input type="text" id="pl_dias2" inputmode="numeric"></div>
       <div class="field" data-for="parcelado"><label for="pl_n">Número de parcelas</label><select id="pl_n">${opt(PARCELAS, (x) => x + 'x')}</select></div>
       <div class="field" data-for="parcelado"><label for="pl_first">Primeiro vencimento</label><input type="date" id="pl_first"><span class="hint">Em branco: 1 mês depois da venda. As demais, mês a mês.</span></div>
+      ${cronoHtml('pl_crono', 'data-for="livre"')}
       <div class="field full"><label for="pl_quem">Quem ficou com o dinheiro</label><select id="pl_quem"><option value="">Regra do carro (padrão)</option>${partnerOpts().map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join('')}</select></div>
     </div>
     <div id="pl_prev"></div><div class="err" id="ferr" role="alert"></div>
     <div class="acts"><button type="button" class="btn" data-x="cancel">Cancelar</button><button class="btn pri" type="submit" id="fsave">Programar</button></div></form>`;
   $('#pl_n').value = '3';
 
+  let planErr = '';
   const read = () => {
     const mode = $('#pl_mode').value;
     const total = parseMoney($('#pl_total').value), ent = parseMoney($('#pl_ent').value);
@@ -745,6 +835,8 @@ export function openPlanForm(carId, onDone) {
   const parts = () => {
     const r = read();
     if (!r.base || r.total == null || Number.isNaN(r.total) || r.total <= 0) return [];
+    if (r.mode === 'livre') { const pl = planoLivre($('#pl_crono'), { total: r.total, base: r.base, entrada: r.ent }); planErr = pl.err || ''; return pl.rows || []; }
+    planErr = '';
     return Calc.plan({ total: r.total, base: r.base, mode: r.mode, entrada: r.ent, prazoDias: Number.isNaN(r.dias) ? 0 : r.dias, n: r.n, primeiro: r.first || null });
   };
   const refresh = () => {
@@ -756,9 +848,10 @@ export function openPlanForm(carId, onDone) {
     const sum = round2(ps.reduce((a, p) => a + p.valor, 0));
     $('#pl_prev').innerHTML = ps.length
       ? `<div class="tbl"><table class="compact" style="min-width:0"><thead><tr><th>Parcela</th><th>Vencimento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>${ps.map((p) => `<tr><td>${esc(p.label)}</td><td class="num">${dmy(p.due)}</td><td class="r num">${brl(p.valor)}</td><td>${p.status === 'Recebido' ? 'Recebido' : 'A receber'}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="2"><b>Total</b></td><td class="r num"><b>${brl(sum)}</b></td><td></td></tr></tfoot></table></div>`
-      : '<p class="mut small" style="margin:0">Preencha o valor e a data para ver as parcelas.</p>';
+      : `<p class="mut small" style="margin:0">${esc(planErr || 'Preencha o valor e a data para ver as parcelas.')}</p>`;
   };
   m.oninput = refresh; m.onchange = refresh; refresh();
+  cronoWire($('#pl_crono'), refresh);
   m.onclick = (ev) => { if (ev.target === m || ev.target.getAttribute?.('data-x') === 'cancel') closeModal(); };
   $('#pl_total').focus();
 
@@ -768,7 +861,7 @@ export function openPlanForm(carId, onDone) {
     if (saving) return;
     const ps = parts();
     const r = read();
-    if (!ps.length) { $('#ferr').textContent = 'Informe o valor a programar e a data da venda.'; return; }
+    if (!ps.length) { $('#ferr').textContent = planErr || 'Informe o valor a programar e a data da venda.'; return; }
     if (r.mode === 'prazo' && (Number.isNaN(r.dias) || r.dias < 0)) { $('#ferr').textContent = 'Informe o prazo em dias.'; return; }
     const quem = $('#pl_quem').value || null;
     saving = true; $('#fsave').disabled = true;

@@ -20,7 +20,7 @@ const lists = {
   rstatus: ['Pendente', 'Recebido'],
   divis: ['50/50', 'Proporcional ao investido', 'Personalizado'],
   // Dívidas (empréstimos e carros a pagar). Os textos de modos, origens e status são comparados em public/js/calc.js: não renomeie.
-  loanModes: ['Juros mensais', 'Parcelado'],
+  loanModes: ['Juros mensais', 'Parcelado', 'Personalizado'],
   origens: ['Carro', 'Empréstimo'],
   ptipos: ['À vista', 'Entrada', 'Parcela', 'Juros', 'Devolução'],
   paystatus: ['Pendente', 'Pago'],

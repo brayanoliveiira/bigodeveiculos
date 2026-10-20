@@ -246,6 +246,8 @@ var Calc = (function () {
      'Juros mensais': juros todo mês (no dia do empréstimo) até a devolução; no vencimento, juros do mês + o valor emprestado.
      'Parcelado': tabela Price com juros de taxaMes ao mês (sem juros: parcelas iguais); 1º vencimento em venc ou um mês depois.
      Devolve [{ label, tipo, due, valor }]. */
+  /* Parcelado e Personalizado (datas e valores livres): cada pagamento tem uma parte de juros, proporcional (juros total / total pago). */
+  function proporcional(l) { return l.modo === 'Parcelado' || l.modo === 'Personalizado'; }
   /* Parte de juros de uma conta de empréstimo com juros mensais: a conta de juros inteira; na devolução, o que passa do valor emprestado. */
   function jurosDaConta(x, l) { return x.tipo === 'Juros' ? N0(x.valor) : x.tipo === 'Devolução' ? Math.max(0, r2(N0(x.valor) - N0(l.valor))) : 0; }
   /* Juros do mês a partir da % (0 a 1): em reais inteiros, arredondado para cima (3,3% de 33.333 = R$ 1.100). */
@@ -310,7 +312,7 @@ var Calc = (function () {
     live.forEach(function (x) {
       if (x.status !== 'Pago') return;
       var l = lv[x.loanId], v = N0(x.valor), t = tot[x.loanId];
-      var j = l.modo === 'Parcelado' ? (t > 0 ? v * Math.max(0, t - N0(l.valor)) / t : 0) : jurosDaConta(x, l);
+      var j = proporcional(l) ? (t > 0 ? v * Math.max(0, t - N0(l.valor)) / t : 0) : jurosDaConta(x, l);
       var d = x.paidAt || x.due;
       if (j <= 0 || (from && d < from) || (to && d > to)) return;
       var sp = splitOf(j, x.quem), k = String(d).slice(0, 7);
@@ -336,7 +338,7 @@ var Calc = (function () {
       if (!g.fim || x.due > g.fim) g.fim = x.due;
       if (x.status === 'Pago') {
         s.pago += v; g.pago += v; g.nPago++;
-        var jx = x.loanId != null && lv[x.loanId].modo !== 'Parcelado' ? jurosDaConta(x, lv[x.loanId]) : 0;
+        var jx = x.loanId != null && !proporcional(lv[x.loanId]) ? jurosDaConta(x, lv[x.loanId]) : 0;
         if (jx > 0) { s.jurosPagos += jx; g.jurosPagos += jx; }
         return;
       }
@@ -353,9 +355,9 @@ var Calc = (function () {
       g.itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); });
       g.juros = r2(g.total - N0(l.valor)); // juros do empréstimo inteiro (pago + a pagar)
       g.quitado = g.falta <= 0.004;
-      if (l.modo === 'Parcelado' && g.total > 0) g.jurosPagos = r2(g.pago * g.juros / g.total); // parcela = parte juros + parte valor
+      if (proporcional(l) && g.total > 0) g.jurosPagos = r2(g.pago * g.juros / g.total); // parcela = parte juros + parte valor
       if (l.modo === 'Juros mensais' && g.falta > 0.004) s.jurosMes += num(l.jurosMes) !== null ? N0(l.jurosMes) : jurosDaTaxa(N0(l.valor), l.taxaMes);
-      if (l.modo === 'Parcelado') s.jurosPagos += g.jurosPagos;
+      if (proporcional(l)) s.jurosPagos += g.jurosPagos;
       s.jurosPend += Math.max(0, r2(g.juros - g.jurosPagos)); // juros que ainda vamos pagar
     });
     Object.keys(s.porCar).forEach(function (id) { s.porCar[id].itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); }); });
