@@ -8,7 +8,7 @@ import { renderReceipts, renderRepasses } from './vendas.js';
 import { renderParcelas } from './dividas.js';
 import { exportCsv } from './gerencial.js';
 
-const TABS = [['resumo', 'Resumo'], ['carros', 'Carros'], ['onde', 'Onde estão'], ['vendas', 'Vendas'], ['apagar', 'Veículos a pagar'], ['emprestimos', 'Empréstimos'], ['gastos', 'Gastos'], ['previstos', 'Previstos'], ['gerencial', 'Gerencial'], ['historico', 'Histórico'], ['ajustes', 'Ajustes']];
+const TABS = [['resumo', 'Resumo'], ['carros', 'Carros'], ['consignados', 'Consignados'], ['onde', 'Onde estão'], ['vendas', 'Vendas'], ['apagar', 'Veículos a pagar'], ['emprestimos', 'Empréstimos'], ['gastos', 'Gastos'], ['previstos', 'Previstos'], ['gerencial', 'Gerencial'], ['historico', 'Histórico'], ['ajustes', 'Ajustes']];
 const POLL_MS = 5000;
 let pollTimer = null;
 
@@ -134,7 +134,12 @@ function go(tab) {
   mountTab();
 }
 window.addEventListener('hashchange', () => { const t = location.hash.replace('#', ''); if (S.me && t && t !== S.tab && views[t]) go(t); });
-document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('#modal').hidden) closeModal(); });
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && !$('#modal').hidden) closeModal();
+  // blocos clicáveis do Resumo (não são <button>): Enter ou espaço abrem como um clique
+  const t = ev.target;
+  if ((ev.key === 'Enter' || ev.key === ' ') && t && t.matches && t.matches('[role="link"],[role="button"]') && t.tagName !== 'BUTTON') { ev.preventDefault(); t.click(); }
+});
 
 /* ---------- ações ---------- */
 async function run(fn, okMsg) {
@@ -198,7 +203,13 @@ function userForm(u) {
 document.addEventListener('click', async (ev) => {
   const b = ev.target.closest('[data-act],[data-go],[data-st],[data-vf],[data-rep]');
   if (!b || !S.me) return;
-  if (b.dataset.go) { go(b.dataset.go); return; }
+  if (b.dataset.go) {
+    // data-ui="chave=valor;..." ajusta o filtro da aba antes de abrir (ex.: Em estoque, A receber, relatório do Gerencial)
+    if (b.dataset.ui) b.dataset.ui.split(';').forEach((kv) => { const i = kv.indexOf('='); if (i > 0) S.ui[kv.slice(0, i)] = kv.slice(i + 1); });
+    if (b.closest('#modal')) closeModal();
+    if (S.tab === b.dataset.go) mountTab(); else go(b.dataset.go);
+    return;
+  }
   if (b.dataset.st) { S.ui.st = b.dataset.st; views.carros.paint(); return; }
   if (b.dataset.vf) { S.ui.vf = b.dataset.vf; views.vendas.paint(); return; }
   if (b.dataset.rep) { S.ui.rep = b.dataset.rep; views.gerencial.paint(); return; }
@@ -243,6 +254,16 @@ document.addEventListener('click', async (ev) => {
     case 'edit-car': openForm('car', itemOf('car', id)); break;
     case 'sell-car': it = itemOf('car', id); openForm('car', it, { vender: true, heading: `Vender ${it.name}` }); break;
     case 'car-gastos': S.ui.gcar = String(id); go('gastos'); break;
+    case 'cg-f': S.ui.cgf = id; views.consignados.paint(); break;
+    case 'rs-apagar': { // Resumo > A pagar: quanto é de veículos e quanto é de empréstimos
+      const soma = (o, k) => Object.values(o).reduce((a, g) => a + (g[k] || 0), 0);
+      const linha = (go, nome, falta, venc, n) => `<li><button type="button" class="${venc > 0.004 ? 'bad' : ''}" data-go="${go}"><span>${esc(nome)}: <b>${brl(falta)}</b>${venc > 0.004 ? `, ${brl(venc)} vencido` : ''}<span class="mut small"> em ${n} ${n === 1 ? 'conta' : 'contas'}</span></span><span class="go">Ver</span></button></li>`;
+      const nv = Object.values(S.DV.porCar).filter((g) => g.falta > 0.004).length, ne = Object.values(S.DV.porLoan).filter((g) => g.falta > 0.004).length;
+      openSheet(`<h2>A pagar: ${brl(S.DV.total)}</h2><ul class="att">${linha('apagar', 'Veículos a pagar', soma(S.DV.porCar, 'falta'), soma(S.DV.porCar, 'atrasado'), nv)}${linha('emprestimos', 'Empréstimos', soma(S.DV.porLoan, 'falta'), soma(S.DV.porLoan, 'atrasado'), ne)}</ul>
+        <p class="mut small" style="margin:0">${esc(names().A)} paga ${brl(S.DV.A)} e ${esc(names().B)} paga ${brl(S.DV.B)}.${S.DV.prox ? ` Próximo vencimento em ${dmyStr(S.DV.prox)}.` : ''}</p>
+        <div class="acts"><button type="button" class="btn" data-x="cancel">Fechar</button></div>`);
+      break;
+    }
     case 'move': openForm('move', itemOf('car', id)); break;
     case 'del-car': it = itemOf('car', id); confirmBox(`Excluir o carro "${it.name}"? Os gastos dele deixam de contar. Dá para restaurar pelo Histórico.`, () => del('car', it), 'Excluir'); break;
     case 'new-exp': openForm('expense', null, { prefill: S.ui.gcar ? { carId: S.ui.gcar } : {} }); break;

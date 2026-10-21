@@ -40,6 +40,7 @@ views.vendas = {
       { label: 'Venda', r: true, get: (d) => brl(Calc.num(d.c.vvenda)) },
       { label: 'Troca', r: true, get: (d) => (d.troca > 0 ? brl(d.troca) : '—') },
       { label: 'Dinheiro', r: true, get: (d) => brl(d.cash) },
+      { label: 'Cada um recebe', r: true, get: (d) => (d.retA == null ? '—' : `${esc(nm('A'))} ${brl(d.retA)}<div>${esc(nm('B'))} ${brl(d.retB)}</div>`) },
       { label: 'Recebido', r: true, get: (d) => brl(d.recebido) },
       { label: 'A receber', r: true, get: (d) => (d.aReceber > 0.004 ? brl(d.aReceber) + (d.atrasado > 0.004 ? `<div class="neg small">${brl(d.atrasado)} atrasado</div>` : '') : '—') },
       { label: 'Próx. venc.', get: (d) => (d.prox ? dmy(d.prox) : '—') },

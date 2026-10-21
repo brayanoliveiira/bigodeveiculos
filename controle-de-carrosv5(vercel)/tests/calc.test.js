@@ -266,3 +266,16 @@ test('empréstimo personalizado: juros proporcional em cada pagamento', () => {
   near(C.jurosPagos(pay, loans).total, 2500, 'sai do lucro');
   near(s.jurosPend, 1500, 'juros ainda a pagar');
 });
+
+test('carro vendido: quanto cada sócio recebe (entrada + gastos + lucro) e o acerto do carro', () => {
+  // A pôs 20 mil e B 10 mil; A gastou 2 mil; vendido por 40 mil, todo o dinheiro ficou com A
+  const cars = [{ id: 1, name: 'Gol', entT: 30000, ovrA: 20000, ovrB: 10000, status: 'Vendido', vvenda: 40000, dvenda: '2026-10-10', quemrec: 'A' }];
+  const d = C.compute(cars, [{ carId: 1, valor: 2000, quem: 'A' }], [], { meta: 0.1 }, HOJE, [], [], [])[1];
+  near(d.lucro, 8000, 'lucro'); near(d.retA, 20000 + 2000 + 4000, 'A recebe'); near(d.retB, 10000 + 4000, 'B recebe');
+  near(d.retA + d.retB, 40000, 'fecha com a venda');
+  near(d.acertoA, 26000 - 40000, 'A ficou com tudo: passa 14 mil para B');
+  // consignado: recebe gastos + comissão; o repasse ao dono não é de ninguém
+  const cs = [{ id: 2, name: 'Ka', dono: 'Felipe', repasse: 20000, status: 'Vendido', vvenda: 25000, dvenda: '2026-10-10' }];
+  const e = C.compute(cs, [{ carId: 2, valor: 1000, quem: 'B' }], [], { meta: 0.1 }, HOJE, [], [], [])[2];
+  near(e.retA, 2000, 'comissão de A'); near(e.retB, 1000 + 2000, 'gasto + comissão de B'); near(e.retA + e.retB, 5000, 'venda − repasse');
+});

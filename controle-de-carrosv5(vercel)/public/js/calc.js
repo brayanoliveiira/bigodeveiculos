@@ -169,6 +169,12 @@ var Calc = (function () {
       d.lucro = (d.vendido && vv !== null) ? vv - d.custo : null;
       d.lucA = d.lucro !== null ? d.lucro * d.pA : null;
       d.lucB = d.lucro !== null ? d.lucro - d.lucA : null;
+      // Quanto cada sócio recebe da venda: o que investiu (entrada + gastos) + a parte do lucro (ou da comissão, no consignado).
+      // acertoA: direito de A menos o que ficou com A (dinheiro + carro de troca − o que A pagou ao dono). > 0: B passa para A; < 0: A passa para B.
+      if (d.lucro !== null) {
+        d.retA = r2(d.entA + d.gastA + d.lucA); d.retB = r2(d.entB + d.gastB + d.lucB);
+        d.acertoA = r2(d.retA - ((d.recA || 0) + d.kindA - d.repA));
+      } else { d.retA = null; d.retB = null; d.acertoA = null; }
       d.margem = (d.lucro !== null && d.custo > 0) ? d.lucro / d.custo : null;
       d.perdeu = (d.vendido && an !== null && vv !== null) ? Math.max(0, an - vv) : null;
       d.proj = (!d.vendido && an !== null) ? an - d.pmin : null;

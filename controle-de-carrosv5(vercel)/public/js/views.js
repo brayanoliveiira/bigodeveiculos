@@ -1,5 +1,5 @@
 // Telas. Cada uma tem mount(el) (monta o esqueleto) e paint() (redesenha com os dados atuais).
-import { $, esc, brl, money, pct, dmy, today, stamp, sign, initials, marcaOf } from './util.js';
+import { $, esc, brl, money, pct, dmy, today, stamp, sign, initials, marcaOf, table } from './util.js';
 import { S, LISTS, names, itemOf, carName, liveCars, locClass } from './state.js';
 
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -31,6 +31,19 @@ function fipeNote(c) {
   return bits.length ? `<span class="mut">${esc(bits.join(' · '))}</span>` : '';
 }
 
+/** Carro vendido: quanto cada sócio recebe da venda (entrada + gastos + parte do lucro) e o acerto deste carro. */
+function retornoHtml(d) {
+  if (!d.vendido || d.retA == null) return '';
+  const ent = !d.consig, lab = d.consig ? 'Comissão' : 'Lucro';
+  const linha = (p) => {
+    const e = p === 'A' ? d.entA : d.entB, g = p === 'A' ? d.gastA : d.gastB, l = p === 'A' ? d.lucA : d.lucB, t = p === 'A' ? d.retA : d.retB;
+    return `<tr><td>${esc(nm(p))}</td>${ent ? `<td class="r num">${brl(e)}</td>` : ''}<td class="r num">${brl(g)}</td><td class="r num ${sign(l)}">${brl(l)}</td><td class="r num"><b>${brl(t)}</b></td></tr>`;
+  };
+  const a = d.acertoA, quem = a > 0 ? `${nm('B')} passa ${brl(a)} para ${nm('A')}` : `${nm('A')} passa ${brl(-a)} para ${nm('B')}`;
+  const acerto = Math.abs(a) < 0.01 ? 'Cada um já ficou com a sua parte.' : `Para fechar este carro: ${quem}${d.aReceber > 0.004 ? ', contando o que ainda vai entrar' : ''}.`;
+  return `<div class="ret"><div class="ret-h">Da venda, cada um recebe</div><table class="plain ret-t"><thead><tr><th></th>${ent ? '<th class="r">Entrada</th>' : ''}<th class="r">Gastos</th><th class="r">${lab}</th><th class="r">Recebe</th></tr></thead><tbody>${linha('A')}${linha('B')}</tbody></table><p class="ret-a">${esc(acerto)}</p></div>`;
+}
+
 function carCard(d) {
   const c = d.c, open = S.ui.open[c.id];
   const locInfo = `<div class="locrow">${stPill(c.status)}${d.vendido ? '' : locPill(c)}${c.locdet ? `<span>${esc(c.locdet)}</span>` : ''}${d.diasLoc != null ? `<span class="mut">há ${d.diasLoc} dia${d.diasLoc === 1 ? '' : 's'}</span>` : ''}${d.atrasoLoc ? '<span class="pill late">Saída atrasada</span>' : d.saiLogo ? '<span class="pill soon">Sai em até 2 dias</span>' : ''}</div>`;
@@ -43,14 +56,13 @@ function carCard(d) {
   const n2 = d.vendido
     ? `<div><dt>Venda</dt><dd>${brl(Calc.num(c.vvenda))}</dd></div><div><dt>${d.consig ? 'Comissão' : 'Lucro'}</dt><dd class="${sign(d.lucro)}">${brl(d.lucro)}</dd></div>`
     : `<div><dt>Anúncio</dt><dd>${brl(Calc.num(c.anun))}</dd></div><div><dt>${d.consig ? 'Comissão projetada' : 'Lucro projetado'}</dt><dd class="${sign(d.proj)}">${brl(d.proj)}</dd></div>`;
-  const foot = d.vendido && d.lucro != null
-    ? `${d.consig ? 'Comissão' : 'Lucro'}: ${nm('A')} ${brl(d.lucA)} · ${nm('B')} ${brl(d.lucB)}`
-    : `Divisão: ${nm('A')} ${Math.round(d.pA * 100)}% · ${nm('B')} ${Math.round((1 - d.pA) * 100)}%`;
+  const foot = d.vendido && d.lucro != null ? '' : `Divisão: ${nm('A')} ${Math.round(d.pA * 100)}% e ${nm('B')} ${Math.round((1 - d.pA) * 100)}%`;
   let h = `<article class="card cs-${esc(String(c.status || 'Em').split(' ')[0])}" data-id="${c.id}"><div class="card-h">${plate(c.placa)}<div class="ct"><h3>${esc(c.name)}</h3><p class="mut">${[c.ano, c.cor, c.km != null ? Number(c.km).toLocaleString('pt-BR') + ' km' : null, c.dcompra ? 'comprado em ' + dmy(c.dcompra) : null, d.dias != null ? d.dias + ' dias' : null].filter(Boolean).map(esc).join(' · ')}</p></div></div>${locInfo}${hist}${apagar}${emprest}` +
     `<dl class="nums"><div><dt>Custo total</dt><dd>${brl(d.custo)}</dd></div>${n2}</dl>` +
     (c.fipe ? `<div class="fipe"><span>FIPE <b class="num">${brl(Calc.num(c.fipe))}</b></span>${fipeNote(c)}</div>` : '') +
     (d.entregue ? `<div class="consig"><span class="pill dono">Carro de troca · fica com ${esc(c.dono)}</span><span class="mut">Não conta como nosso estoque; o valor abate o repasse.</span></div>` : d.consig ? `<div class="consig"><span class="pill dono">Consignado · ${esc(c.dono)}</span><span>Repasse <b class="num">${brl(d.repasse)}</b></span>${d.emEspecie > 0 ? `<span>Já em carro <b class="num">${brl(d.emEspecie)}</b></span>` : ''}${d.repFalta > 0.004 ? `<span class="pill soon">Falta repassar ${brl(d.repFalta)}</span>` : '<span class="pill ok">Repassado</span>'}<button class="btn sm" data-act="repasses" data-id="${c.id}">Repasses</button></div>` : '') +
     `<div class="mut small">Investido: ${esc(nm('A'))} <b class="num">${brl(d.invA)}</b> · ${esc(nm('B'))} <b class="num">${brl(d.invB)}</b></div>` +
+    retornoHtml(d) +
     (d.vendido && d.cash != null ? `<div class="locrow"><span class="pill">${esc(d.forma || '')}</span>${d.aReceber > 0.004 ? `<span class="${d.atrasado > 0.004 ? 'pill late' : 'pill soon'}">A receber ${brl(d.aReceber)}</span>` : '<span class="pill ok">Quitado</span>'}</div>` : '') +
     `<div class="card-f"><span class="sp mut">${esc(foot)}</span><button class="btn sm" data-act="toggle" data-id="${c.id}">${open ? 'Fechar' : 'Detalhes'}</button><button class="btn sm" data-act="car-gastos" data-id="${c.id}" title="Ver os gastos deste carro">Gastos${d.gast > 0 ? ' ' + brl(d.gast) : ''}</button>${d.vendido ? `<button class="btn sm" data-act="receipts" data-id="${c.id}">Recebimentos</button>` : ''}${S.canWrite ? `<button class="btn sm" data-act="edit-car" data-id="${c.id}">Editar</button>` : ''}${S.canWrite && !d.vendido && !d.entregue ? `<button class="btn sm pri" data-act="sell-car" data-id="${c.id}">Vender</button>` : ''}</div>`;
   if (open) {
@@ -110,14 +122,15 @@ views.resumo = {
     // Resumo: o painel escuro responde "como estamos?"; abaixo, o que precisa de atenção e os sócios. O detalhe fica no Gerencial.
     const soc = Reports.porSocio(S.D, S.expenses, '', '', J);
     const proj = s.proj - (S.DV.jurosPend || 0), emEst = s.estoque + s.reservados;
-    const R = (t, v, sub) => `<div><dt>${esc(t)}</dt><dd>${v}</dd>${sub ? `<dd class="sub">${sub}</dd>` : ''}</div>`;
-    let h = `<section class="hq" aria-label="Resumo"><p class="hq-l">Lucro líquido</p><p class="hq-big${s.lucroLiq < 0 ? ' neg' : ''}">${money(s.lucroLiq)}</p>` +
-      `<p class="hq-sub">${J.total ? `${brl(s.lucro)} dos carros vendidos, menos ${brl(J.total)} de juros` : `${s.vendidos} ${s.vendidos === 1 ? 'carro vendido' : 'carros vendidos'}`}</p><dl class="hq-row">` +
-      R('Em estoque', `${emEst} ${emEst === 1 ? 'carro' : 'carros'}`, `${brl(s.parado)} investidos`) +
-      R('Lucro projetado', money(proj), S.DV.jurosPend > 0.004 ? `após ${brl(S.DV.jurosPend)} de juros a pagar` : 'pelo preço de anúncio') +
-      R('A receber', money(s.aReceber), s.atrasado > 0.004 ? `<span class="neg">${brl(s.atrasado)} vencido</span>` : 'nada vencido') +
-      R('A pagar', money(S.DV.total), S.DV.total > 0.004 ? (S.DV.atrasado > 0.004 ? `<span class="neg">${brl(S.DV.atrasado)} vencido</span>` : `próximo em ${dmy(S.DV.prox)}`) : 'nada em aberto') +
-      R('Giro', s.diasMedio == null ? '—' : `${Math.round(s.diasMedio)} dias`, s.margem == null ? 'para vender' : `para vender, margem de ${pct(s.margem)}`) + '</dl></section>';
+    // Tudo no Resumo leva ao detalhe: data-go abre a aba e data-ui ajusta o filtro dela (ex.: "st=Em estoque").
+    const link = (go, ui, label) => `data-go="${go}"${ui ? ` data-ui="${esc(ui)}"` : ''} tabindex="0" role="link" aria-label="${esc(label)}"`;
+    const R = (t, v, sub, go, ui) => `<div class="hq-i" ${go === 'act' ? `data-act="${ui}" tabindex="0" role="button" aria-label="${esc(t)}: ver detalhes"` : link(go, ui, `${t}: ver detalhes`)}><dt>${esc(t)}</dt><dd>${v}</dd>${sub ? `<dd class="sub">${sub}</dd>` : ''}</div>`;
+    let h = `<section class="hq" aria-label="Resumo"><div class="hq-main" ${link('gerencial', 'rep=lucro', 'Lucro líquido: ver por mês')}><p class="hq-l">Lucro líquido</p><p class="hq-big${s.lucroLiq < 0 ? ' neg' : ''}">${money(s.lucroLiq)}</p>` +
+      `<p class="hq-sub">${J.total ? `${brl(s.lucro)} dos carros vendidos, menos ${brl(J.total)} de juros` : `${s.vendidos} ${s.vendidos === 1 ? 'carro vendido' : 'carros vendidos'}`}</p></div><dl class="hq-row">` +
+      R('Em estoque', `${emEst} ${emEst === 1 ? 'carro' : 'carros'}`, `${s.consigEstoque ? `${s.consigEstoque} ${s.consigEstoque === 1 ? 'consignado' : 'consignados'}, ` : ''}${brl(s.parado)} investidos`, 'carros', 'st=Em estoque;soConsig=') +
+      R('Lucro projetado', money(proj), S.DV.jurosPend > 0.004 ? `após ${brl(S.DV.jurosPend)} de juros a pagar` : 'pelo preço de anúncio', 'gerencial', 'rep=estoque') +
+      R('A receber', money(s.aReceber), s.atrasado > 0.004 ? `<span class="neg">${brl(s.atrasado)} vencido</span>` : 'nada vencido', 'vendas', 'vf=A receber') +
+      R('A pagar', money(S.DV.total), S.DV.total > 0.004 ? (S.DV.atrasado > 0.004 ? `<span class="neg">${brl(S.DV.atrasado)} vencido</span>` : `próximo em ${dmy(S.DV.prox)}`) : 'nada em aberto', 'act', 'rs-apagar') + '</dl></section>';
 
     if (al.length) {
       const PAG = { carros: 'Carros', onde: 'Onde estão', vendas: 'Vendas', apagar: 'Veículos a pagar', emprestimos: 'Empréstimos', previstos: 'Previstos' };
@@ -127,9 +140,9 @@ views.resumo = {
     const [a0] = s.acerto;
     const msg = Math.abs(a0.saldo) < 0.005 ? 'Ninguém deve nada a ninguém.' : a0.saldo > 0 ? `${nm('B')} deve ${brl(a0.saldo)} a ${nm('A')}.` : `${nm('A')} deve ${brl(-a0.saldo)} a ${nm('B')}.`;
     h += `<div class="sec cols"><section><div class="sec-h"><h2>Sócios</h2></div><div class="duo">` +
-      ['A', 'B'].map((p) => `<div class="socio"><div class="nm">${esc(nm(p))}</div><div class="big${soc[p].vendidos.lucLiq < 0 ? ' neg' : ''}">${money(soc[p].vendidos.lucLiq)}</div><div class="sm">de lucro, com ${brl(soc[p].estoque.inv)} investidos hoje</div></div>`).join('') +
-      `</div><p class="acerto">${esc(msg)}</p></section>` +
-      `<section><div class="sec-h"><h2>Lucro líquido por mês</h2><div class="yearnav"><button class="btn sm" data-act="yr" data-d="-1" aria-label="Ano anterior">‹</button><b class="num">${S.year}</b><button class="btn sm" data-act="yr" data-d="1" aria-label="Próximo ano">›</button></div></div>${chart(s.months)}</section></div>`;
+      ['A', 'B'].map((p) => `<div class="socio" ${link('gerencial', 'rep=socios', `${nm(p)}: ver detalhes`)}><div class="nm">${esc(nm(p))}</div><div class="big${soc[p].vendidos.lucLiq < 0 ? ' neg' : ''}">${money(soc[p].vendidos.lucLiq)}</div><div class="sm">de lucro, com ${brl(soc[p].estoque.inv)} investidos hoje</div></div>`).join('') +
+      `</div><p class="acerto" ${link('gerencial', 'rep=socios', 'Acerto entre sócios: ver detalhes')}>${esc(msg)}</p></section>` +
+      `<section><div class="sec-h"><h2>Lucro líquido por mês</h2><div class="yearnav"><button class="btn sm" data-act="yr" data-d="-1" aria-label="Ano anterior">‹</button><b class="num">${S.year}</b><button class="btn sm" data-act="yr" data-d="1" aria-label="Próximo ano">›</button></div></div><div class="hq-chart" ${link('gerencial', 'rep=lucro', 'Lucro por mês: ver tabela')}>${chart(s.months)}</div></section></div>`;
     h += '<p class="more"><button class="linkbtn" data-go="gerencial">Todos os números no Gerencial</button></p>';
     el.innerHTML = h;
   },
@@ -137,8 +150,9 @@ views.resumo = {
 
 views.carros = {
   mount(el) {
-    el.innerHTML = `<div class="toolbar"><input type="text" id="q" class="grow" placeholder="Buscar por nome, placa ou comprador" value="${esc(S.ui.q)}" aria-label="Buscar carro"><div class="chips" id="stchips"></div><button class="chip" id="bymarca" aria-pressed="${!!S.ui.byMarca}">Agrupar por montadora</button>${S.canWrite ? '<button class="btn pri" data-act="new-car">Novo carro</button>' : ''}</div><div id="list"></div>`;
+    el.innerHTML = `<div class="toolbar"><input type="text" id="q" class="grow" placeholder="Buscar por nome, placa ou comprador" value="${esc(S.ui.q)}" aria-label="Buscar carro"><div class="chips" id="stchips"></div><button class="chip" id="soconsig" aria-pressed="${!!S.ui.soConsig}">Consignados</button><button class="chip" id="bymarca" aria-pressed="${!!S.ui.byMarca}">Agrupar por montadora</button>${S.canWrite ? '<button class="btn pri" data-act="new-car">Novo carro</button>' : ''}</div><div id="list"></div>`;
     $('#q').oninput = function () { S.ui.q = this.value; views.carros.paint(); };
+    $('#soconsig').onclick = function () { S.ui.soConsig = !S.ui.soConsig; this.setAttribute('aria-pressed', String(S.ui.soConsig)); views.carros.paint(); };
     $('#bymarca').onclick = function () {
       S.ui.byMarca = !S.ui.byMarca; this.setAttribute('aria-pressed', String(S.ui.byMarca));
       try { localStorage.setItem('bc.byMarca', S.ui.byMarca ? '1' : ''); } catch { /* sem armazenamento: vale só nesta visita */ }
@@ -155,6 +169,7 @@ views.carros = {
     const list = derived().filter((d) => {
       const c = d.c;
       if (S.ui.st !== 'Todos' && c.status !== S.ui.st) return false;
+      if (S.ui.soConsig && !d.consig) return false;
       return !q || [c.name, c.placa, c.comprador, marcaOf(c)].join(' ').toLowerCase().includes(q);
     }).sort((a, b) => (a.vendido - b.vendido) || String(b.c.dcompra || '').localeCompare(String(a.c.dcompra || '')));
     if (list.length && S.ui.byMarca) {
@@ -168,6 +183,48 @@ views.carros = {
       return;
     }
     box.innerHTML = list.length ? `<div class="cars">${list.map(carCard).join('')}</div>` : '<div class="empty"><p class="mut" style="margin:0">Nenhum carro encontrado com esse filtro.</p></div>';
+  },
+};
+
+/* ---------- Consignados: carros de terceiros que a gente vende ---------- */
+views.consignados = {
+  mount(el) {
+    el.innerHTML = `<div class="toolbar"><div class="chips" id="cgchips"></div><span class="grow"></span>${S.canWrite ? '<button class="btn pri" data-act="new-car">Novo carro</button>' : ''}</div><div id="list" class="stack"></div>`;
+    this.paint();
+  },
+  paint() {
+    const box = $('#list');
+    if (!box) return;
+    const f = S.ui.cgf || 'Todos';
+    $('#cgchips').innerHTML = ['Todos', 'Em estoque', 'Vendidos', 'A repassar'].map((x) => `<button class="chip" data-act="cg-f" data-id="${x}" aria-pressed="${f === x}">${x}</button>`).join('');
+    const c = Reports.consignados(S.D, today()), t = c.total;
+    if (!c.rows.length) {
+      box.innerHTML = empty('Nenhum carro consignado', 'Carro de terceiro que vocês vendem: no cadastro, preencha "Dono do carro" e o repasse combinado. Ele aparece aqui com a comissão e o que falta repassar.', 'Cadastrar carro', 'new-car');
+      return;
+    }
+    const est = c.rows.filter((r) => !r.vendido), proj = est.reduce((a, r) => a + (r.proj || 0), 0);
+    const K = (tt, v, cls, hero, sub) => `<div class="kpi${hero ? ' hero' : ''}"><dt>${esc(tt)}</dt><dd class="${cls || ''}">${v}</dd>${sub ? `<dd class="sub">${sub}</dd>` : ''}</div>`;
+    let h = '<dl class="grid kpis" style="margin:0">' +
+      K('Em estoque', `${est.length} ${est.length === 1 ? 'carro' : 'carros'}`, '', true, est.length ? `comissão prevista de ${brl(proj)}` : '') +
+      K('Comissão realizada', money(t.comissao), t.comissao < 0 ? 'neg' : '', false, `${t.vendidos} ${t.vendidos === 1 ? 'vendido' : 'vendidos'}, ${esc(nm('A'))} ${brl(t.comA)} e ${esc(nm('B'))} ${brl(t.comB)}`) +
+      K('A repassar aos donos', money(t.falta), t.falta > 0.004 ? 'neg' : '', false, t.falta > 0.004 ? 'de carros já vendidos' : 'tudo repassado') +
+      K('Já repassado', money(t.repassado)) + '</dl>';
+    const rows = c.rows.filter((r) => f === 'Todos' || (f === 'Em estoque' && !r.vendido) || (f === 'Vendidos' && r.vendido) || (f === 'A repassar' && r.vendido && r.falta > 0.004));
+    const sit = (r) => {
+      const d = S.D[r.carId] || {};
+      if (!r.vendido) return `Em estoque${d.dias != null ? `<div class="mut small">há ${d.dias} ${d.dias === 1 ? 'dia' : 'dias'}</div>` : ''}`;
+      return `Vendido${r.dvenda ? `<div class="mut small">em ${dmy(r.dvenda)}</div>` : ''}`;
+    };
+    h += table([
+      { label: 'Carro', get: (r) => `<b>${esc(r.car)}</b>${r.placa ? `<div class="mut small">${esc(r.placa)}</div>` : ''}` },
+      { label: 'Dono', get: (r) => esc(r.dono || '—') },
+      { label: 'Situação', get: sit },
+      { label: 'Repasse', r: true, get: (r) => `${brl(r.repasse)}${r.vendido ? `<div class="mut small">repassado ${brl(r.repassado)}</div>` : ''}` },
+      { label: 'Falta repassar', r: true, get: (r) => (r.vendido ? (r.falta > 0.004 ? `<span class="neg">${brl(r.falta)}</span>` : '<span class="mut">nada</span>') : '<span class="mut">depois da venda</span>') },
+      { label: 'Comissão', r: true, get: (r) => (r.vendido ? `<span class="${sign(r.comissao)}">${brl(r.comissao)}</span>` : (r.proj != null ? `<span class="mut">prevista ${brl(r.proj)}</span>` : '<span class="mut">sem anúncio</span>')) },
+      { label: '', get: (r) => `<div class="row-acts">${r.vendido ? `<button class="btn sm" data-act="repasses" data-id="${r.carId}">Repasses</button>` : (S.canWrite ? `<button class="btn sm pri" data-act="sell-car" data-id="${r.carId}">Vender</button>` : '')}${S.canWrite ? `<button class="btn sm" data-act="edit-car" data-id="${r.carId}">Editar</button>` : ''}</div>` },
+    ], rows, null, 'Nenhum carro neste filtro.');
+    box.innerHTML = h;
   },
 };
 
