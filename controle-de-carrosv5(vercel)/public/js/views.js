@@ -32,6 +32,22 @@ function fipeNote(c) {
 }
 
 /** Carro vendido: quanto cada sócio recebe da venda (entrada + gastos + parte do lucro) e o acerto deste carro. */
+/** Transferência para o comprador ainda não feita (carro vendido que não está no nome do comprador). */
+export const transfPendente = (d) => d.vendido && !d.entregue && d.c.docNome !== 'Comprador';
+/** Etiquetas de documento: em nome de quem está, transferência pendente (com botão) e documentação pendente. */
+function docHtml(d) {
+  const c = d.c, t = [];
+  if (d.vendido && !d.entregue) {
+    t.push(c.docNome === 'Comprador' ? `<span class="pill ok">Transferido${c.docTransf ? ' em ' + dmy(c.docTransf) : ''}</span>`
+      : `<button class="pill late" data-act="doc-transf" data-id="${c.id}" title="Marcar como transferido">Transferência pendente</button>`);
+  } else if (!d.vendido) {
+    if (c.docNome === 'Nosso nome') t.push('<span class="pill">No nosso nome</span>');
+    else if (c.docNome === 'Antigo dono') t.push('<span class="pill">No nome do antigo dono</span>');
+  }
+  if (c.docPend) t.push(`<button class="pill soon" data-act="doc-ok" data-id="${c.id}" title="Marcar como resolvida">Documentação pendente${c.docObs ? ': ' + esc(c.docObs) : ''}</button>`);
+  return t.length ? `<div class="locrow">${t.join('')}</div>` : '';
+}
+
 function retornoHtml(d) {
   if (!d.vendido || d.retA == null) return '';
   const ent = !d.consig, lab = d.consig ? 'Comissão' : 'Lucro';
@@ -57,14 +73,14 @@ function carCard(d) {
     ? `<div><dt>Venda</dt><dd>${brl(Calc.num(c.vvenda))}</dd></div><div><dt>${d.consig ? 'Comissão' : 'Lucro'}</dt><dd class="${sign(d.lucro)}">${brl(d.lucro)}</dd></div>`
     : `<div><dt>Anúncio</dt><dd>${brl(Calc.num(c.anun))}</dd></div><div><dt>${d.consig ? 'Comissão projetada' : 'Lucro projetado'}</dt><dd class="${sign(d.proj)}">${brl(d.proj)}</dd></div>`;
   const foot = d.vendido && d.lucro != null ? '' : `Divisão: ${nm('A')} ${Math.round(d.pA * 100)}% e ${nm('B')} ${Math.round((1 - d.pA) * 100)}%`;
-  let h = `<article class="card cs-${esc(String(c.status || 'Em').split(' ')[0])}" data-id="${c.id}"><div class="card-h">${plate(c.placa)}<div class="ct"><h3>${esc(c.name)}</h3><p class="mut">${[c.ano, c.cor, c.km != null ? Number(c.km).toLocaleString('pt-BR') + ' km' : null, c.dcompra ? 'comprado em ' + dmy(c.dcompra) : null, d.dias != null ? d.dias + ' dias' : null].filter(Boolean).map(esc).join(' · ')}</p></div></div>${locInfo}${hist}${apagar}${emprest}` +
+  let h = `<article class="card cs-${esc(String(c.status || 'Em').split(' ')[0])}" data-id="${c.id}"><div class="card-h">${plate(c.placa)}<div class="ct"><h3>${esc(c.name)}</h3><p class="mut">${[c.ano, c.cor, c.km != null ? Number(c.km).toLocaleString('pt-BR') + ' km' : null, c.dcompra ? 'comprado em ' + dmy(c.dcompra) : null, d.dias != null ? d.dias + ' dias' : null].filter(Boolean).map(esc).join(' · ')}</p></div></div>${locInfo}${docHtml(d)}${hist}${apagar}${emprest}` +
     `<dl class="nums"><div><dt>Custo total</dt><dd>${brl(d.custo)}</dd></div>${n2}</dl>` +
     (c.fipe ? `<div class="fipe"><span>FIPE <b class="num">${brl(Calc.num(c.fipe))}</b></span>${fipeNote(c)}</div>` : '') +
     (d.entregue ? `<div class="consig"><span class="pill dono">Carro de troca · fica com ${esc(c.dono)}</span><span class="mut">Não conta como nosso estoque; o valor abate o repasse.</span></div>` : d.consig ? `<div class="consig"><span class="pill dono">Consignado · ${esc(c.dono)}</span><span>Repasse <b class="num">${brl(d.repasse)}</b></span>${d.emEspecie > 0 ? `<span>Já em carro <b class="num">${brl(d.emEspecie)}</b></span>` : ''}${d.repFalta > 0.004 ? `<span class="pill soon">Falta repassar ${brl(d.repFalta)}</span>` : '<span class="pill ok">Repassado</span>'}<button class="btn sm" data-act="repasses" data-id="${c.id}">Repasses</button></div>` : '') +
     `<div class="mut small">Investido: ${esc(nm('A'))} <b class="num">${brl(d.invA)}</b> · ${esc(nm('B'))} <b class="num">${brl(d.invB)}</b></div>` +
     retornoHtml(d) +
     (d.vendido && d.cash != null ? `<div class="locrow"><span class="pill">${esc(d.forma || '')}</span>${d.aReceber > 0.004 ? `<span class="${d.atrasado > 0.004 ? 'pill late' : 'pill soon'}">A receber ${brl(d.aReceber)}</span>` : '<span class="pill ok">Quitado</span>'}</div>` : '') +
-    `<div class="card-f"><span class="sp mut">${esc(foot)}</span><button class="btn sm" data-act="toggle" data-id="${c.id}">${open ? 'Fechar' : 'Detalhes'}</button><button class="btn sm" data-act="car-gastos" data-id="${c.id}" title="Ver os gastos deste carro">Gastos${d.gast > 0 ? ' ' + brl(d.gast) : ''}</button>${d.vendido ? `<button class="btn sm" data-act="receipts" data-id="${c.id}">Recebimentos</button>` : ''}${S.canWrite ? `<button class="btn sm" data-act="edit-car" data-id="${c.id}">Editar</button>` : ''}${S.canWrite && !d.vendido && !d.entregue ? `<button class="btn sm pri" data-act="sell-car" data-id="${c.id}">Vender</button>` : ''}</div>`;
+    `<div class="card-f"><span class="sp mut">${esc(foot)}</span><button class="btn sm" data-act="toggle" data-id="${c.id}">${open ? 'Fechar' : 'Detalhes'}</button><button class="btn sm" data-act="car-gastos" data-id="${c.id}" title="Ver os gastos deste carro">Gastos${d.gast > 0 ? ' ' + brl(d.gast) : ''}</button>${d.vendido ? `<button class="btn sm" data-act="receipts" data-id="${c.id}">Recebimentos</button>` : ''}${S.canWrite ? `<button class="btn sm" data-act="edit-car" data-id="${c.id}">Editar</button>` : ''}${S.canWrite && !d.vendido && !d.entregue ? `<button class="btn sm pri" data-act="sell-car" data-id="${c.id}">Vender</button>` : ''}${S.canWrite && transfPendente(d) ? `<button class="btn sm pri" data-act="doc-transf" data-id="${c.id}">Transferido</button>` : ''}</div>`;
   if (open) {
     const r = (k, v, cls) => `<span class="k">${esc(k)}</span><span class="v ${cls || ''}">${v}</span>`;
     h += `<div class="det"><h4>Investido por sócio</h4>${r(nm('A'), brl(d.invA))}${r(nm('B'), brl(d.invB))}<h4>Custos</h4>${d.consig ? r('Repasse ao dono (' + (c.dono || '') + ')', brl(d.repasse)) + r('Já repassado', brl(d.repPago)) + (d.emEspecie > 0 ? r('Pago em carro (troca)', brl(d.emEspecie)) : '') + r('Falta repassar', brl(d.repFalta)) : r('Entrada ' + nm('A'), brl(d.entA)) + r('Entrada ' + nm('B'), brl(d.entB))}${r('Gastos de ' + nm('A'), brl(d.gastA))}${r('Gastos de ' + nm('B'), brl(d.gastB))}${r('Previstos pendentes', brl(d.prev))}${r('Preço mínimo (zero a zero)', brl(d.pmin))}${r('Preço para a meta de lucro', brl(d.pmeta))}`;
@@ -118,6 +134,9 @@ views.resumo = {
     if (s.parcAtras) al.push(['vendas', `${brl(s.atrasado)} de clientes vencido`, true]);
     if (s.repFalta > 0.004) al.push(['carros', `${brl(s.repFalta)} para repassar aos donos de consignados`]);
     if (S.DV.atrasado > 0.004) al.push([Object.values(S.DV.porCar).some((g) => g.atrasado > 0.004) ? 'apagar' : 'emprestimos', `${brl(S.DV.atrasado)} a pagar vencido`, true]);
+    const nTransf = derived().filter(transfPendente).length, nDoc = derived().filter((d) => d.c.docPend).length;
+    if (nTransf) al.push(['carros', `${nTransf} ${nTransf === 1 ? 'transferência pendente' : 'transferências pendentes'}`, true, 'st=Todos;docf=1;soConsig=']);
+    if (nDoc) al.push(['carros', `${nDoc} ${nDoc === 1 ? 'carro com documentação pendente' : 'carros com documentação pendente'}`, false, 'st=Todos;docf=1;soConsig=']);
     if (s.prevAtrasados) al.push(['previstos', `${s.prevAtrasados} ${s.prevAtrasados === 1 ? 'gasto previsto atrasado' : 'gastos previstos atrasados'}`]);
     // Resumo: o painel escuro responde "como estamos?"; abaixo, o que precisa de atenção e os sócios. O detalhe fica no Gerencial.
     const soc = Reports.porSocio(S.D, S.expenses, '', '', J);
@@ -135,7 +154,7 @@ views.resumo = {
     if (al.length) {
       const PAG = { carros: 'Carros', onde: 'Onde estão', vendas: 'Vendas', apagar: 'Veículos a pagar', emprestimos: 'Empréstimos', previstos: 'Previstos' };
       h += `<section class="sec"><div class="sec-h"><h2>Precisa de atenção</h2></div><ul class="att">` +
-        al.map((a) => `<li><button class="${a[2] ? 'bad' : ''}" data-go="${a[0]}"><span>${esc(a[1])}</span><span class="go">${esc(PAG[a[0]] || '')}</span></button></li>`).join('') + '</ul></section>';
+        al.map((a) => `<li><button class="${a[2] ? 'bad' : ''}" data-go="${a[0]}"${a[3] ? ` data-ui="${esc(a[3])}"` : ''}><span>${esc(a[1])}</span><span class="go">${esc(PAG[a[0]] || '')}</span></button></li>`).join('') + '</ul></section>';
     }
     const [a0] = s.acerto;
     const msg = Math.abs(a0.saldo) < 0.005 ? 'Ninguém deve nada a ninguém.' : a0.saldo > 0 ? `${nm('B')} deve ${brl(a0.saldo)} a ${nm('A')}.` : `${nm('A')} deve ${brl(-a0.saldo)} a ${nm('B')}.`;
@@ -150,8 +169,9 @@ views.resumo = {
 
 views.carros = {
   mount(el) {
-    el.innerHTML = `<div class="toolbar"><input type="text" id="q" class="grow" placeholder="Buscar por nome, placa ou comprador" value="${esc(S.ui.q)}" aria-label="Buscar carro"><div class="chips" id="stchips"></div><button class="chip" id="soconsig" aria-pressed="${!!S.ui.soConsig}">Consignados</button><button class="chip" id="bymarca" aria-pressed="${!!S.ui.byMarca}">Agrupar por montadora</button>${S.canWrite ? '<button class="btn pri" data-act="new-car">Novo carro</button>' : ''}</div><div id="list"></div>`;
+    el.innerHTML = `<div class="toolbar"><input type="text" id="q" class="grow" placeholder="Buscar por nome, placa ou comprador" value="${esc(S.ui.q)}" aria-label="Buscar carro"><div class="chips" id="stchips"></div><button class="chip" id="soconsig" aria-pressed="${!!S.ui.soConsig}">Consignados</button><button class="chip" id="docf" aria-pressed="${!!S.ui.docf}">Documentação</button><button class="chip" id="bymarca" aria-pressed="${!!S.ui.byMarca}">Agrupar por montadora</button>${S.canWrite ? '<button class="btn pri" data-act="new-car">Novo carro</button>' : ''}</div><div id="list"></div>`;
     $('#q').oninput = function () { S.ui.q = this.value; views.carros.paint(); };
+    $('#docf').onclick = function () { S.ui.docf = S.ui.docf ? '' : '1'; this.setAttribute('aria-pressed', String(!!S.ui.docf)); views.carros.paint(); };
     $('#soconsig').onclick = function () { S.ui.soConsig = !S.ui.soConsig; this.setAttribute('aria-pressed', String(S.ui.soConsig)); views.carros.paint(); };
     $('#bymarca').onclick = function () {
       S.ui.byMarca = !S.ui.byMarca; this.setAttribute('aria-pressed', String(S.ui.byMarca));
@@ -170,6 +190,7 @@ views.carros = {
       const c = d.c;
       if (S.ui.st !== 'Todos' && c.status !== S.ui.st) return false;
       if (S.ui.soConsig && !d.consig) return false;
+      if (S.ui.docf && !(transfPendente(d) || c.docPend)) return false; // só pendências de documento
       return !q || [c.name, c.placa, c.comprador, marcaOf(c)].join(' ').toLowerCase().includes(q);
     }).sort((a, b) => (a.vendido - b.vendido) || String(b.c.dcompra || '').localeCompare(String(a.c.dcompra || '')));
     if (list.length && S.ui.byMarca) {

@@ -336,3 +336,15 @@ test('empréstimos e contas a pagar: cadastro, programação, troca das pendente
   assert.ok(audit.some((a) => a.entity === 'loan' && a.action === 'programou'));
   assert.ok(audit.some((a) => a.entity === 'car' && a.action === 'programou a pagar'));
 });
+
+test('documento do carro: transferido grava a data, voltar apaga; documentação pendente', async () => {
+  const adm = client();
+  await adm('POST', '/api/login', { username: 'brayan', password: 'senha-do-brayan' });
+  const c = (await adm('POST', '/api/cars', { name: 'Doc', docNome: 'Antigo dono', docPend: 1, docObs: 'pegar o DUT' })).json.item;
+  assert.equal(c.docNome, 'Antigo dono'); assert.equal(c.docPend, 1); assert.equal(c.docObs, 'pegar o DUT');
+  assert.equal((await adm('POST', '/api/cars', { name: 'X', docNome: 'Outro' })).status, 400);
+  const t = (await adm('PATCH', `/api/cars/${c.id}`, { docNome: 'Comprador' })).json.item;
+  assert.match(t.docTransf, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal((await adm('PATCH', `/api/cars/${c.id}`, { docNome: 'Nosso nome' })).json.item.docTransf, null);
+  assert.equal((await adm('PATCH', `/api/cars/${c.id}`, { docPend: 0, docObs: null })).json.item.docPend, 0);
+});

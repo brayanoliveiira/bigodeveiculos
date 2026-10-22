@@ -19,6 +19,8 @@ const lists = {
   pstatus: ['Pendente', 'Realizado', 'Cancelado'],
   rstatus: ['Pendente', 'Recebido'],
   divis: ['50/50', 'Proporcional ao investido', 'Personalizado'],
+  // Em nome de quem está o documento do carro. 'Comprador' = já transferido para o cliente (comparado em public/js/views.js).
+  docNomes: ['Antigo dono', 'Nosso nome', 'Comprador'],
   // Dívidas (empréstimos e carros a pagar). Os textos de modos, origens e status são comparados em public/js/calc.js: não renomeie.
   loanModes: ['Juros mensais', 'Parcelado', 'Personalizado'],
   origens: ['Carro', 'Empréstimo'],

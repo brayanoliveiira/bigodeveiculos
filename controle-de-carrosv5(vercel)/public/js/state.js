@@ -1,5 +1,5 @@
 // Estado único da tela. Os dados vêm do servidor (GET /api/data); o resto é preferência de tela.
-export const LISTS = { locs: [], cats: [], status: [], pstatus: [], rstatus: [], divis: [], roles: [] };
+export const LISTS = { locs: [], cats: [], status: [], pstatus: [], rstatus: [], divis: [], docNomes: [], roles: [] };
 
 export const S = {
   me: null,           // { id, username, name, role }

@@ -108,6 +108,9 @@ const round2 = (v) => Math.round(v * 100) / 100;
  * no Pátio / Loja sem data de entrada, vale a data de compra; no pátio (ou sem local) não há nome de oficina.
  */
 function carRules(values, merged, row) {
+  // Transferido para o comprador: guarda a data (se não veio); deixou de ser 'Comprador': apaga a data.
+  if (merged.docNome === 'Comprador' && isBlank(merged.docTransf)) values.docTransf = new Date().toISOString().slice(0, 10);
+  if (merged.docNome !== 'Comprador' && !isBlank(merged.docTransf)) values.docTransf = null;
   if (merged.status === 'Vendido') {
     if (merged.loc !== 'Entregue' || (row && row.status !== 'Vendido')) {
       values.loc = 'Entregue'; values.locdet = null; values.locprev = null;

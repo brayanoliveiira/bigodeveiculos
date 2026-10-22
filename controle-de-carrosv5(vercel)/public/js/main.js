@@ -255,6 +255,16 @@ document.addEventListener('click', async (ev) => {
     case 'sell-car': it = itemOf('car', id); openForm('car', it, { vender: true, heading: `Vender ${it.name}` }); break;
     case 'car-gastos': S.ui.gcar = String(id); go('gastos'); break;
     case 'cg-f': S.ui.cgf = id; views.consignados.paint(); break;
+    case 'doc-transf': // carro vendido: confirma antes de marcar como transferido para o comprador
+      it = itemOf('car', id);
+      confirmBox(`Confirmar que o ${it.name}${it.placa ? ' (' + it.placa + ')' : ''} já foi transferido para o comprador${it.comprador ? ', ' + it.comprador : ''}?`,
+        async () => { await api('PATCH', `/api/cars/${id}`, { docNome: 'Comprador' }); await reload(); toast('Marcado como transferido.'); }, 'Sim, transferido');
+      break;
+    case 'doc-ok':
+      it = itemOf('car', id);
+      confirmBox(`A documentação do ${it.name} está resolvida${it.docObs ? ` (${it.docObs})` : ''}?`,
+        async () => { await api('PATCH', `/api/cars/${id}`, { docPend: 0, docObs: null }); await reload(); toast('Documentação resolvida.'); }, 'Sim, resolvida');
+      break;
     case 'rs-apagar': { // Resumo > A pagar: quanto é de veículos e quanto é de empréstimos
       const soma = (o, k) => Object.values(o).reduce((a, g) => a + (g[k] || 0), 0);
       const linha = (go, nome, falta, venc, n) => `<li><button type="button" class="${venc > 0.004 ? 'bad' : ''}" data-go="${go}"><span>${esc(nome)}: <b>${brl(falta)}</b>${venc > 0.004 ? `, ${brl(venc)} vencido` : ''}<span class="mut small"> em ${n} ${n === 1 ? 'conta' : 'contas'}</span></span><span class="go">Ver</span></button></li>`;
