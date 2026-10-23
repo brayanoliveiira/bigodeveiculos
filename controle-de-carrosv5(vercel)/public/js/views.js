@@ -50,14 +50,18 @@ function docHtml(d) {
 
 function retornoHtml(d) {
   if (!d.vendido || d.retA == null) return '';
-  const ent = !d.consig, lab = d.consig ? 'Comissão' : 'Lucro';
+  // Uma linha por sócio, cabe em qualquer largura: "Brayan R$ 40.000,00 / R$ 27.500,00 de entrada + R$ 12.500,00 de lucro"
   const linha = (p) => {
     const e = p === 'A' ? d.entA : d.entB, g = p === 'A' ? d.gastA : d.gastB, l = p === 'A' ? d.lucA : d.lucB, t = p === 'A' ? d.retA : d.retB;
-    return `<tr><td>${esc(nm(p))}</td>${ent ? `<td class="r num">${brl(e)}</td>` : ''}<td class="r num">${brl(g)}</td><td class="r num ${sign(l)}">${brl(l)}</td><td class="r num"><b>${brl(t)}</b></td></tr>`;
+    const partes = [[e, 'de entrada'], [g, 'de gastos'], [l, d.consig ? 'de comissão' : 'de lucro']].filter(([v]) => Math.abs(v) > 0.004)
+      .map(([v, txt], i) => `${i && v < 0 ? '− ' : i ? '+ ' : ''}<span class="${v < 0 ? 'neg' : ''}">${brl(i && v < 0 ? -v : v)}</span> ${txt}`);
+    return `<div class="ret-p"><div class="ret-n"><span>${esc(nm(p))}</span><b class="num">${brl(t)}</b></div>${partes.length ? `<div class="ret-c">${partes.join(' ')}</div>` : ''}</div>`;
   };
-  const a = d.acertoA, quem = a > 0 ? `${nm('B')} passa ${brl(a)} para ${nm('A')}` : `${nm('A')} passa ${brl(-a)} para ${nm('B')}`;
-  const acerto = Math.abs(a) < 0.01 ? 'Cada um já ficou com a sua parte.' : `Para fechar este carro: ${quem}${d.aReceber > 0.004 ? ', contando o que ainda vai entrar' : ''}.`;
-  return `<div class="ret"><div class="ret-h">Da venda, cada um recebe</div><table class="plain ret-t"><thead><tr><th></th>${ent ? '<th class="r">Entrada</th>' : ''}<th class="r">Gastos</th><th class="r">${lab}</th><th class="r">Recebe</th></tr></thead><tbody>${linha('A')}${linha('B')}</tbody></table><p class="ret-a">${esc(acerto)}</p></div>`;
+  const a = d.acertoA, falta = d.aReceber > 0.004;
+  const quem = a > 0 ? `${nm('B')} passa ${brl(a)} para ${nm('A')}` : `${nm('A')} passa ${brl(-a)} para ${nm('B')}`;
+  const acerto = Math.abs(a) < 0.01 ? (falta ? 'Quando tudo entrar, cada um fica com a sua parte.' : 'Cada um já ficou com a sua parte.')
+    : `Para fechar este carro: ${quem}${falta ? ', contando o que ainda vai entrar' : ''}.`;
+  return `<div class="ret"><div class="ret-h">Da venda, cada um recebe</div>${linha('A')}${linha('B')}<p class="ret-a">${esc(acerto)}</p></div>`;
 }
 
 function carCard(d) {
