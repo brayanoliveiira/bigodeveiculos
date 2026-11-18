@@ -67,7 +67,15 @@ valor FIPE, referência, nome e ano. Usa a API pública fipe.parallelum.com.br (
 Não existe API gratuita e legítima que descubra o carro **pela placa**: o Sinesp Cidadão foi encerrado e os sites de "placa FIPE"
 são formulários, não APIs. Por isso a consulta por placa abaixo é opcional e paga.
 
-## Consulta por placa pelo site zapcarconsulta.com.br (padrão, sem token)
+## Consulta por placa pelo Puxa Placa (padrão, sem token)
+Sem token, o app abre a página pública `https://puxaplaca.com.br/placa/XXX0X00` (o robots.txt do site permite `/placa/`) e lê marca, modelo,
+ano, cor, município e a lista de versões da tabela FIPE. A versão mais provável vem escolhida: as palavras do modelo da placa contam a favor e os
+opcionais que a placa não cita (Dualogic, automático, turbo, 4x4, diesel) contam contra; "AT" = automático e "D4" = diesel 4x4.
+- Cada placa fica 30 dias em cache e há limite de consultas por hora. O site devolve 429 em rajadas: o app avisa para esperar um minuto.
+- `PLACA_PUXA=false` desliga; `PLACA_PUXA_URL` troca o endereço. Serviço de terceiros sem contrato: respeite o site e não abuse.
+- `PLACA_API_TOKEN` (pago) ou a APIBrasil, se cadastrados, têm prioridade.
+
+## Consulta por placa pelo site zapcarconsulta.com.br (desligada)
 
 > **Novembro de 2026:** o site tirou do ar o endereço `/api/fipe-placa` (responde 404 para qualquer placa). O app avisa isso na tela. Para a consulta por placa voltar, cadastre a APIBrasil (seção abaixo / `APIBRASIL_BEARER` e `APIBRASIL_DEVICE_TOKEN`). A busca na tabela FIPE (marca > modelo > ano) continua funcionando sem nada.
 No cadastro do carro, ao **salvar** com uma placa nova (ou ao trocar a placa), o servidor consulta

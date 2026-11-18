@@ -787,7 +787,7 @@ function wirePlateLookup(refresh) {
     const sub = [d.ano, d.cor, [d.municipio, d.uf].filter(Boolean).join('/'), d.situacao].filter(Boolean).map(esc).join(' · ');
     const opts = d.fipe.map((o, i) => `<option value="${i}">${esc(brl(o.valor))} — ${esc(o.modelo || '')}${o.anoModelo ? ' ' + o.anoModelo : ''}</option>`).join('');
     out.innerHTML = `<div class="plres"><b>${esc(d.nome)}</b><span class="mut small">${sub}</span>` +
-      (d.fipe.length ? `<label class="small" for="plfipe">${d.fipeFonte === 'modelo' ? 'A placa não trouxe a FIPE. Valores da tabela FIPE para esse modelo e ano' : 'Valor FIPE'}${d.fipe.length > 1 ? ' (escolha a versão certa)' : ''}</label><select id="plfipe">${opts}</select>`
+      (d.fipe.length ? `<label class="small" for="plfipe">${d.fipeFonte === 'modelo' ? 'A placa não trouxe a FIPE. Valores da tabela FIPE para esse modelo e ano' : 'Valor FIPE'}${d.fipe.length > 1 ? (d.fipeFonte === 'modelo' ? ' (escolha a versão certa)' : ' (já veio a mais provável; troque se for outra)') : ''}</label><select id="plfipe">${opts}</select>`
         : '<span class="small">A consulta não trouxe valor FIPE para esta placa. Use a busca na tabela FIPE ou digite à mão.</span>') +
       `<span class="mut small">${d.cache ? 'Consulta guardada de ' + esc(stamp(d.consultadoEm)) : 'Consulta feita agora'} · <button type="button" class="linkbtn" id="plagain">consultar de novo</button></span></div>`;
     const sel = $('#plfipe');

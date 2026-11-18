@@ -50,8 +50,11 @@ function fromEnv(env = process.env) {
     placaUrl: env.PLACA_API_URL || 'https://wdapi2.com.br/consulta',
     // Consulta por placa GRÁTIS (não oficial, sem token): usada quando não há PLACA_API_TOKEN. PLACA_FREE=false desliga.
     placaFree: env.PLACA_FREE === 'true',
-    // Consulta por placa no site zapcarconsulta.com.br (padrão, sem token). PLACA_SITE=false desliga.
-    placaSite: env.PLACA_SITE !== 'false',
+    // Consulta por placa na página pública do puxaplaca.com.br (padrão, sem token). PLACA_PUXA=false desliga.
+    placaPuxa: env.PLACA_PUXA !== 'false',
+    placaPuxaUrl: env.PLACA_PUXA_URL || 'https://puxaplaca.com.br/placa',
+    // zapcarconsulta.com.br: tirou a rota do ar em nov/2026. Só com PLACA_SITE=true e PLACA_PUXA=false.
+    placaSite: env.PLACA_SITE === 'true',
     placaSiteUrl: env.PLACA_SITE_URL || 'https://www.zapcarconsulta.com.br/api/fipe-placa',
     // APIBrasil (plano grátis, 100 consultas/dia): conta em app.apibrasil.io -> Minhas APIs -> API Placa Dados.
     apibrasilBearer: env.APIBRASIL_BEARER || '',

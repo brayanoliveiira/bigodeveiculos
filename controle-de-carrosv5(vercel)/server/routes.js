@@ -34,7 +34,7 @@ function register(router, { db, cfg, limiter }) {
     await db.get('SELECT 1 AS ok');
     return { ok: true };
   });
-  router.add('GET', '/api/config', {}, async () => ({ lists: { locs: lists.locs, cats: lists.cats, status: lists.status, pstatus: lists.pstatus, rstatus: lists.rstatus, divis: lists.divis, docNomes: lists.docNomes, pdTipos: lists.pdTipos, pdComo: lists.pdComo, roles: lists.roles, loanModes: lists.loanModes, origens: lists.origens, ptipos: lists.ptipos, paystatus: lists.paystatus, formasPag: lists.formasPag }, placa: !!cfg.placaToken || !!cfg.placaSite || !!cfg.placaFree || !!(cfg.apibrasilBearer && cfg.apibrasilDevice) }));
+  router.add('GET', '/api/config', {}, async () => ({ lists: { locs: lists.locs, cats: lists.cats, status: lists.status, pstatus: lists.pstatus, rstatus: lists.rstatus, divis: lists.divis, docNomes: lists.docNomes, pdTipos: lists.pdTipos, pdComo: lists.pdComo, roles: lists.roles, loanModes: lists.loanModes, origens: lists.origens, ptipos: lists.ptipos, paystatus: lists.paystatus, formasPag: lists.formasPag }, placa: !!cfg.placaToken || !!cfg.placaPuxa || !!cfg.placaSite || !!cfg.placaFree || !!(cfg.apibrasilBearer && cfg.apibrasilDevice) }));
 
   router.add('POST', '/api/login', {}, async (ctx) => {
     const username = String(ctx.body.username || '').trim();
@@ -186,7 +186,7 @@ function register(router, { db, cfg, limiter }) {
   });
   /** Depois de salvar o carro com placa nova: consulta o site e grava valor FIPE, mês de referência, cor e ano (estes dois só se vazios). Falha aqui nunca desfaz o cadastro. */
   async function autoFipe(ctx, item) {
-    if (!item || !item.placa || (!cfg.placaToken && !cfg.placaSite && !cfg.placaFree && !(cfg.apibrasilBearer && cfg.apibrasilDevice))) return { item };
+    if (!item || !item.placa || (!cfg.placaToken && !cfg.placaPuxa && !cfg.placaSite && !cfg.placaFree && !(cfg.apibrasilBearer && cfg.apibrasilDevice))) return { item };
     try {
       const d = await placaComFipe(ctx, item.placa, false);
       // FIPE achada só pelo modelo: com mais de uma versão possível, não escolhe sozinho (a tela mostra as opções).

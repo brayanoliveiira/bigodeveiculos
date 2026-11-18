@@ -115,6 +115,55 @@ function parseSite(j, placa) {
   }, placa);
 }
 
+/* ---------- puxaplaca.com.br: página pública da placa (HTML), sem token ---------- */
+const txt = (s) => semAcento(String(s || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')).replace(/\s+/g, ' ').trim();
+/** Valor de uma linha "<b>Rótulo:</b></td><td>valor</td>" da ficha do veículo. */
+function campo(html, rotulo) {
+  const re = new RegExp(`<b>\\s*${rotulo}\\s*:?\\s*</b>\\s*</td>\\s*<td[^>]*>([\\s\\S]*?)</td>`, 'i');
+  const m = String(html).match(re);
+  return m ? String(m[1]).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || null : null;
+}
+// Sinônimos de quem escreve a placa e de quem escreve a FIPE (AT = Aut., D4 = diesel 4x4, TB = turbo...).
+const SINONIMO = { at: ['aut'], 'aut.': ['aut'], aut: ['aut'], automatico: ['aut'], automatica: ['aut'], automatic: ['aut'], cvt: ['aut'], tiptronic: ['aut'], easytronic: ['aut'],
+  dualogic: ['aut'], 'i-motion': ['aut'], imotion: ['aut'], powershift: ['aut'], gsr: ['aut'], 'mec.': ['mec'], mec: ['mec'], manual: ['mec'],
+  d4: ['4x4', 'diesel'], '4x4': ['4x4'], awd: ['4x4'], '4wd': ['4x4'], tb: ['turbo'], turbo: ['turbo'], tdi: ['diesel', 'turbo'], diesel: ['diesel'],
+  hibrido: ['hibrido'], hybrid: ['hibrido'], eletrico: ['eletrico'] };
+// opcionais que mudam a versão (e o preço): se a versão tem e a placa não diz, a versão provavelmente não é essa
+const OPCIONAIS = ['aut', '4x4', 'turbo', 'diesel', 'hibrido', 'eletrico'];
+const palavras = (s) => txt(s).toLowerCase().split(/[^a-z0-9.\-]+/).filter(Boolean);
+const canonicas = (s) => { const out = new Set(); for (const w of palavras(s)) for (const c of (SINONIMO[w] || [w.replace(/\.$/, '')])) out.add(c); return out; };
+/**
+ * Nota de cada versão FIPE comparando com o modelo da placa (ex.: placa "PUNTO ESSENCE 1.6"):
+ * palavras da placa presentes somam; opcional que a placa não cita (Dualogic, automático, turbo...) tira; palavra a mais tira um pouco.
+ * O combustível da placa (Diesel) desempata versões diesel x flex.
+ */
+function notaVersao(modeloPlaca, versao, combustivel) {
+  const placa = canonicas(modeloPlaca), v = canonicas(versao);
+  if (combustivel && /diesel/i.test(combustivel)) placa.add('diesel');
+  let n = 0;
+  for (const w of placa) if (v.has(w)) n += 3; else if (OPCIONAIS.includes(w)) n -= 4; // a placa diz automático/diesel e a versão não
+  for (const w of v) if (!placa.has(w)) n -= OPCIONAIS.includes(w) ? 4 : 0.2;
+  return n;
+}
+const MESES_RE = /(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)( de)? (20\d\d)/i;
+/** HTML de puxaplaca.com.br/placa/XXX -> mesmo formato do normalize(). A versão FIPE mais provável vem primeiro. */
+function parsePuxa(html, placa) {
+  const h = String(html || '');
+  const marca = campo(h, 'Marca'), modelo = campo(h, 'Modelo');
+  if (!marca && !modelo) return null;
+  const anoModelo = campo(h, 'Ano Modelo'), ano = campo(h, 'Ano'), comb = campo(h, 'Combust[ií]vel');
+  // tabela "Código FIPE | Modelo | Valor"
+  const linhas = [...h.matchAll(/<tr>\s*<td[^>]*>\s*(\d{6}-\d)\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>\s*(R\$[^<]*)<\/td>/g)];
+  const vistos = new Set();
+  const mes = txt(h).match(MESES_RE);
+  const dados = linhas.filter((m) => !vistos.has(m[1]) && vistos.add(m[1])).map((m) => {
+    const versao = m[2].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return { texto_valor: m[3].trim(), codigo_fipe: m[1], texto_modelo: versao, ano_modelo: anoModelo, combustivel: /flex/i.test(versao) ? 'Flex' : comb,
+      mes_referencia: mes ? `${mes[1].toLowerCase()} de ${mes[3]}` : null, score: notaVersao(modelo, versao, comb) };
+  });
+  return normalize({ marca, modelo, ano, anoModelo, cor: campo(h, 'Cor'), uf: campo(h, 'UF'), municipio: campo(h, 'Munic[ií]pio'), fipe: { dados } }, placa);
+}
+
 const hits = new Map(); // userId -> [timestamps]
 function throttle(userId) {
   const t = Date.now(), list = (hits.get(userId) || []).filter((x) => t - x < 3600000);
@@ -126,8 +175,9 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   const placa = normalizePlate(rawPlaca);
   if (!PLACA_RE.test(placa)) throw new HttpError(400, 'Placa inválida. Use o formato ABC1D23 ou ABC1234.');
   const apib = !cfg.placaToken && !!(cfg.apibrasilBearer && cfg.apibrasilDevice);
-  const site = !cfg.placaToken && !apib && cfg.placaSite !== false && !!cfg.placaSiteUrl;
-  const gratis = !cfg.placaToken && !apib && !site;
+  const puxa = !cfg.placaToken && !apib && cfg.placaPuxa !== false && !!cfg.placaPuxaUrl;
+  const site = !cfg.placaToken && !apib && !puxa && cfg.placaSite !== false && !!cfg.placaSiteUrl;
+  const gratis = !cfg.placaToken && !apib && !puxa && !site;
   if (gratis && !cfg.placaFree) throw new HttpError(503, 'A consulta de placa ainda não foi ativada. Cadastre APIBRASIL_BEARER e APIBRASIL_DEVICE_TOKEN (veja docs/OPERACAO.md).');
   if (!fresh) {
     const c = await db.get('SELECT json, at FROM placa_cache WHERE placa = ?', placa);
@@ -138,7 +188,12 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   let res, body;
   try {
     const doFetch = cfg.fetch || fetch;
-    if (site) {
+    if (puxa) {
+      // página pública da placa (o robots.txt do site permite /placa/); uma consulta por placa, guardada em cache por 30 dias
+      res = await doFetch(`${String(cfg.placaPuxaUrl).replace(/\/$/, '')}/${encodeURIComponent(placa)}`, { signal: AbortSignal.timeout(15000), headers: { accept: 'text/html', 'accept-language': 'pt-BR,pt;q=0.9', 'user-agent': 'BigodesCar/1.0 (controle de carros da loja)' } });
+      const html = await res.text().catch(() => '');
+      body = res.ok ? { __puxa: true, html } : null;
+    } else if (site) {
       res = await doFetch(`${String(cfg.placaSiteUrl)}?placa=${encodeURIComponent(placa)}`, { signal: AbortSignal.timeout(15000), headers: { accept: 'application/json', 'accept-language': 'pt-BR,pt;q=0.9', 'user-agent': 'Mozilla/5.0 (compatible; BigodesCar/1.0)' } });
       const j = await res.json().catch(() => null);
       body = res.ok ? { __site: true, j } : j;
@@ -160,11 +215,13 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
     }
   } catch (e) {
     const motivo = e && (e.cause && (e.cause.code || e.cause.message) || e.name || e.message) || 'erro';
-    throw new HttpError(502, site ? `Não consegui acessar o site de consulta (${String(motivo).slice(0, 80)}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : gratis ? `O serviço gratuito de placa não respondeu (${String(motivo).slice(0, 80)}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : 'Não consegui falar com o serviço de consulta de placa. Tente de novo em instantes.');
+    throw new HttpError(502, puxa || site ? `Não consegui acessar o site de consulta (${String(motivo).slice(0, 80)}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : gratis ? `O serviço gratuito de placa não respondeu (${String(motivo).slice(0, 80)}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : 'Não consegui falar com o serviço de consulta de placa. Tente de novo em instantes.');
   }
   const msg = body && (body.mensagemRetorno || body.message || body.erro);
-  const data = body && res.ok ? (body.__site ? parseSite(body.j, placa) : body.__apib ? normalizeApiBrasil(body.dados, body.fipe, placa) : normalize(body, placa)) : null;
+  const data = body && res.ok ? (body.__puxa ? parsePuxa(body.html, placa) : body.__site ? parseSite(body.j, placa) : body.__apib ? normalizeApiBrasil(body.dados, body.fipe, placa) : normalize(body, placa)) : null;
   if (!data) {
+    if (puxa && res && res.status === 429) throw new HttpError(429, 'O Puxa Placa pediu para esperar um pouco (muitas consultas seguidas). Tente de novo em um minuto ou use "Buscar valor na tabela FIPE".');
+    if (puxa) throw new HttpError(res && !res.ok && res.status !== 404 ? 502 : 404, res && !res.ok && res.status !== 404 ? `O site de consulta (Puxa Placa) respondeu HTTP ${res.status}. Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : 'O Puxa Placa não achou essa placa. Confira a placa ou use "Buscar valor na tabela FIPE".');
     // 404 sem JSON: o endereço de consulta do site deixou de existir (o site mudou), não é a placa que não existe.
     if (site && res && res.status === 404 && !body) throw new HttpError(502, 'A consulta grátis de placa (zapcarconsulta) mudou e parou de responder. Para voltar a consultar, cadastre APIBRASIL_BEARER e APIBRASIL_DEVICE_TOKEN (plano grátis, 100 por dia; veja docs/OPERACAO.md). Enquanto isso, use "Buscar valor na tabela FIPE" (marca > modelo > ano).');
     if (site) throw new HttpError(res && !res.ok ? 502 : 404, res && !res.ok ? `O site de consulta respondeu HTTP ${res.status}. Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : 'O site não achou essa placa. Confira a placa ou use "Buscar valor na tabela FIPE".');
@@ -177,4 +234,4 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   return { ...data, cache: false, consultadoEm: at };
 }
 
-module.exports = { arrumar, parseSite, lookup, normalize, normalizeApiBrasil, normalizePlate, parseBRL, PLACA_RE };
+module.exports = { arrumar, parseSite, parsePuxa, notaVersao, lookup, normalize, normalizeApiBrasil, normalizePlate, parseBRL, PLACA_RE };

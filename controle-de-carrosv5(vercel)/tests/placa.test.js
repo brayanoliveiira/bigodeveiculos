@@ -183,3 +183,38 @@ test('provedor com marca errada e sem FIPE: conserta o nome e busca a FIPE pelo 
   assert.equal(c.item.fipe, null); assert.equal(c.item.cor, 'Cinza');
   await a6.close();
 });
+
+test('puxaplaca.com.br: lê a página da placa e escolhe a versão FIPE certa', async () => {
+  const ficha = (marca, modelo, ano, anoModelo, cor, comb, versoes) => `<table class='fipeTablePriceDetail'><tr><td><b>Marca:</b></td><td><a href='#'>${marca}</a></td></tr>` +
+    `<tr><td><b>Modelo:</b></td><td>${modelo}</td></tr><tr><td><b>Ano:</b></td><td>${ano}</td></tr><tr><td><b>Ano Modelo:</b></td><td>${anoModelo}</td></tr>` +
+    `<tr><td><b>Cor:</b></td><td>${cor}</td></tr><tr><td><b>Combustível:</b></td><td>${comb}</td></tr></table>` +
+    `<table class='fipeTablePriceDetail'><tr><td><b>Município:</b></td><td>TRES MARIAS</td></tr><tr><td><b>UF:</b></td><td>MG</td></tr></table><p>Tabela FIPE de Novembro de 2026</p>` +
+    `<table><tr><td><b>Código FIPE</b></td><td><b>Modelo</b></td><td><b>Valor</b></td></tr>${versoes.map(([c, m, v]) => `<tr><td width=30px>${c}</td><td width=250px>${m}</td><td width=50px>${v}</td></tr>`).join('')}</table>`;
+  const P = require('../server/placa');
+  const punto = P.parsePuxa(ficha('FIAT', 'PUNTO ESSENCE 1.6', 2012, 2013, 'Preta', 'Gasolina', [['001342-0', 'Punto ESSENCE Dualogic 1.6 Flex 16V 5p', 'R$ 37.596,00'], ['001316-1', 'Punto ESSENCE 1.6 Flex 16V 5p', 'R$ 37.463,00']]), 'JKG9333');
+  assert.equal(punto.marca, 'Fiat'); assert.equal(punto.ano, 2013); assert.equal(punto.anoFab, 2012); assert.equal(punto.cor, 'Preta'); assert.equal(punto.uf, 'MG');
+  assert.equal(punto.fipe[0].codigo, '001316-1', 'sem Dualogic: a placa não diz que é automático'); assert.equal(punto.fipe[0].valor, 37463);
+  assert.equal(punto.fipe[0].referencia, 'novembro de 2026');
+  const toro = P.parsePuxa(ficha('FIAT', 'TORO VOLCANO AT D4', 2018, 2019, 'Branca', 'Diesel', [['001507-5', 'Toro Volcano 2.4 16V Flex Aut.', 'R$ 93.962,00'], ['001453-2', 'Toro Volcano 2.0 16V 4x4 TB Diesel Aut.', 'R$ 99.150,00']]), 'PBK7811');
+  assert.equal(toro.fipe[0].codigo, '001453-2', 'AT = automático, D4 = diesel 4x4');
+  assert.equal(P.parsePuxa('<html>nada</html>', 'AAA0A00'), null);
+
+  const html = ficha('HONDA', 'CIVIC LXS', 2007, 2007, 'Preta', 'Gasolina', [['014049-0', 'Civic Sedan LXS 1.8/1.8 Flex 16V Aut. 4p', 'R$ 42.065,00'], ['014048-1', 'Civic Sedan LXS 1.8/1.8 Flex 16V Mec. 4p', 'R$ 40.981,00']]);
+  const seen = [];
+  const a = await createTestApp({ adminUser: 'x1234', adminPassword: 'senha-12345', adminName: 'X', placaPuxa: true, placaPuxaUrl: 'https://puxa.test/placa',
+    fetch: async (url) => { seen.push(String(url));
+      if (String(url).endsWith('/ZZZ9Z99')) return { ok: false, status: 429, text: async () => '' };
+      return { ok: true, status: 200, text: async () => html }; } });
+  const b = `http://127.0.0.1:${(await a.listen()).port}`;
+  try {
+  const r = await fetch(b + '/api/login', { method: 'POST', headers: H, body: JSON.stringify({ username: 'x1234', password: 'senha-12345' }) });
+  const ck = r.headers.get('set-cookie').split(';')[0];
+  assert.equal((await (await fetch(b + '/api/config')).json()).placa, true);
+  const c = await fetch(b + '/api/cars', { method: 'POST', headers: { ...H, cookie: ck }, body: JSON.stringify({ name: 'Civic', placa: 'ESS0A66', dcompra: '2026-10-01', entT: 30000 }) });
+  const j = await c.json();
+  assert.equal(j.item.fipe, 40981, JSON.stringify(j.fipeAuto)); assert.match(j.item.fipeRef, /cód\. 014048-1/); assert.equal(j.fipeAuto.ok, true);
+  assert.equal(seen[0], 'https://puxa.test/placa/ESS0A66');
+  const lim = await fetch(b + '/api/placa/ZZZ9Z99', { headers: { ...H, cookie: ck } });
+  assert.equal(lim.status, 429); assert.match((await lim.json()).error, /esperar/);
+  } finally { await a.close(); }
+});
