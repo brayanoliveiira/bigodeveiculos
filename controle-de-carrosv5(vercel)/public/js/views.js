@@ -31,6 +31,7 @@ function fipeNote(c) {
   return bits.length ? `<span class="mut">${esc(bits.join(' · '))}</span>` : '';
 }
 
+const pctBR = (f) => (Math.round(f * 1000) / 10).toLocaleString('pt-BR') + '%';
 /** Carro vendido: quanto cada sócio recebe da venda (entrada + gastos + parte do lucro) e o acerto deste carro. */
 /** Transferência para o comprador ainda não feita (carro vendido que não está no nome do comprador). */
 export const transfPendente = (d) => d.vendido && !d.entregue && d.c.docNome !== 'Comprador';
@@ -53,7 +54,7 @@ function retornoHtml(d) {
   // Uma linha por sócio, cabe em qualquer largura: "Brayan R$ 40.000,00 / R$ 27.500,00 de entrada + R$ 12.500,00 de lucro"
   const linha = (p) => {
     const e = p === 'A' ? d.entA : d.entB, g = p === 'A' ? d.gastA : d.gastB, l = p === 'A' ? d.lucA : d.lucB, t = p === 'A' ? d.retA : d.retB;
-    const partes = [[e, 'de entrada'], [g, 'de gastos'], [l, d.consig ? 'de comissão' : 'de lucro']].filter(([v]) => Math.abs(v) > 0.004)
+    const partes = [[e, 'de entrada'], [g, 'de gastos'], [l, d.consig && !d.socio ? 'de comissão' : 'de lucro']].filter(([v]) => Math.abs(v) > 0.004)
       .map(([v, txt], i) => `${i && v < 0 ? '− ' : i ? '+ ' : ''}<span class="${v < 0 ? 'neg' : ''}">${brl(i && v < 0 ? -v : v)}</span> ${txt}`);
     return `<div class="ret-p"><div class="ret-n"><span>${esc(nm(p))}</span><b class="num">${brl(t)}</b></div>${partes.length ? `<div class="ret-c">${partes.join(' ')}</div>` : ''}</div>`;
   };
@@ -74,20 +75,20 @@ function carCard(d) {
   const hist = c.leilao || c.sinistro
     ? `<div class="locrow">${c.leilao ? '<span class="pill late">Leilão</span>' : ''}${c.sinistro ? '<span class="pill late">Sinistro</span>' : ''}${c.histObs ? `<span class="mut small">${esc(c.histObs)}</span>` : ''}</div>` : '';
   const n2 = d.vendido
-    ? `<div><dt>Venda</dt><dd>${brl(Calc.num(c.vvenda))}</dd></div><div><dt>${d.consig ? 'Comissão' : 'Lucro'}</dt><dd class="${sign(d.lucro)}">${brl(d.lucro)}</dd></div>`
-    : `<div><dt>Anúncio</dt><dd>${brl(Calc.num(c.anun))}</dd></div><div><dt>${d.consig ? 'Comissão projetada' : 'Lucro projetado'}</dt><dd class="${sign(d.proj)}">${brl(d.proj)}</dd></div>`;
+    ? `<div><dt>Venda</dt><dd>${brl(Calc.num(c.vvenda))}</dd></div><div><dt>${d.socio ? 'Nosso lucro' : d.consig ? 'Comissão' : 'Lucro'}</dt><dd class="${sign(d.lucro)}">${brl(d.lucro)}</dd></div>`
+    : `<div><dt>Anúncio</dt><dd>${brl(Calc.num(c.anun))}</dd></div><div><dt>${d.socio ? 'Nosso lucro projetado' : d.consig ? 'Comissão projetada' : 'Lucro projetado'}</dt><dd class="${sign(d.proj)}">${brl(d.proj)}</dd></div>`;
   const foot = d.vendido && d.lucro != null ? '' : `Divisão: ${nm('A')} ${Math.round(d.pA * 100)}% e ${nm('B')} ${Math.round((1 - d.pA) * 100)}%`;
   let h = `<article class="card cs-${esc(String(c.status || 'Em').split(' ')[0])}" data-id="${c.id}"><div class="card-h">${plate(c.placa)}<div class="ct"><h3>${esc(c.name)}</h3><p class="mut">${[c.ano, c.cor, c.km != null ? Number(c.km).toLocaleString('pt-BR') + ' km' : null, c.dcompra ? 'comprado em ' + dmy(c.dcompra) : null, d.dias != null ? d.dias + ' dias' : null].filter(Boolean).map(esc).join(' · ')}</p></div></div>${locInfo}${docHtml(d)}${hist}${apagar}${emprest}` +
     `<dl class="nums"><div><dt>Custo total</dt><dd>${brl(d.custo)}</dd></div>${n2}</dl>` +
     (c.fipe ? `<div class="fipe"><span>FIPE <b class="num">${brl(Calc.num(c.fipe))}</b></span>${fipeNote(c)}</div>` : '') +
-    (d.entregue ? `<div class="consig"><span class="pill dono">Carro de troca · fica com ${esc(c.dono)}</span><span class="mut">Não conta como nosso estoque; o valor abate o repasse.</span></div>` : d.consig ? `<div class="consig"><span class="pill dono">Consignado · ${esc(c.dono)}</span><span>Repasse <b class="num">${brl(d.repasse)}</b></span>${d.emEspecie > 0 ? `<span>Já em carro <b class="num">${brl(d.emEspecie)}</b></span>` : ''}${d.repFalta > 0.004 ? `<span class="pill soon">Falta repassar ${brl(d.repFalta)}</span>` : '<span class="pill ok">Repassado</span>'}<button class="btn sm" data-act="repasses" data-id="${c.id}">Repasses</button></div>` : '') +
+    (d.entregue ? `<div class="consig"><span class="pill dono">Carro de troca · fica com ${esc(c.dono)}</span><span class="mut">Não conta como nosso estoque; o valor abate o repasse.</span></div>` : d.consig ? `<div class="consig"><span class="pill dono">Consignado · ${esc(c.dono)}</span><span>Repasse <b class="num">${brl(d.repasse)}</b></span>${d.socio ? `<span class="mut">sócio com ${pctBR(d.fDono)} do carro${d.lucDono ? `, lucro ${d.vendido ? '' : 'previsto '}dele ${brl(d.lucDono)}` : ''}</span>` : ''}${d.emEspecie > 0 ? `<span>Já em carro <b class="num">${brl(d.emEspecie)}</b></span>` : ''}${d.repFalta > 0.004 ? `<span class="pill soon">Falta repassar ${brl(d.repFalta)}</span>` : '<span class="pill ok">Repassado</span>'}<button class="btn sm" data-act="repasses" data-id="${c.id}">Repasses</button></div>` : '') +
     `<div class="mut small">Investido: ${esc(nm('A'))} <b class="num">${brl(d.invA)}</b> · ${esc(nm('B'))} <b class="num">${brl(d.invB)}</b></div>` +
     retornoHtml(d) +
     (d.vendido && d.cash != null ? `<div class="locrow"><span class="pill">${esc(d.forma || '')}</span>${d.aReceber > 0.004 ? `<span class="${d.atrasado > 0.004 ? 'pill late' : 'pill soon'}">A receber ${brl(d.aReceber)}</span>` : '<span class="pill ok">Quitado</span>'}</div>` : '') +
-    `<div class="card-f"><span class="sp mut">${esc(foot)}</span><button class="btn sm" data-act="toggle" data-id="${c.id}">${open ? 'Fechar' : 'Detalhes'}</button><button class="btn sm" data-act="car-gastos" data-id="${c.id}" title="Ver os gastos deste carro">Gastos${d.gast > 0 ? ' ' + brl(d.gast) : ''}</button>${d.vendido ? `<button class="btn sm" data-act="receipts" data-id="${c.id}">Recebimentos</button>` : ''}${S.canWrite ? `<button class="btn sm" data-act="edit-car" data-id="${c.id}">Editar</button>` : ''}${S.canWrite && !d.vendido && !d.entregue ? `<button class="btn sm pri" data-act="sell-car" data-id="${c.id}">Vender</button>` : ''}${S.canWrite && transfPendente(d) ? `<button class="btn sm pri" data-act="doc-transf" data-id="${c.id}">Transferido</button>` : ''}</div>`;
+    `<div class="card-f"><span class="sp mut">${esc(foot)}</span><button class="btn sm" data-act="toggle" data-id="${c.id}">${open ? 'Fechar' : 'Detalhes'}</button><button class="btn sm" data-act="car-gastos" data-id="${c.id}" title="Ver os gastos deste carro">Gastos${d.gast > 0 ? ' ' + brl(d.gast) : ''}</button>${d.vendido ? `<button class="btn sm" data-act="receipts" data-id="${c.id}">Recebimentos</button>` : ''}${S.canWrite ? `<button class="btn sm" data-act="edit-car" data-id="${c.id}">Editar</button>` : ''}${S.canWrite && !d.vendido && !d.entregue ? `<button class="btn sm" data-act="car-reserva" data-id="${c.id}" title="${c.status === 'Reservado' ? 'Voltar para em estoque' : 'Marcar como reservado'}">${c.status === 'Reservado' ? 'Tirar reserva' : 'Reservar'}</button>` : ''}${S.canWrite && !d.vendido && !d.entregue ? `<button class="btn sm pri" data-act="sell-car" data-id="${c.id}">Vender</button>` : ''}${S.canWrite && transfPendente(d) ? `<button class="btn sm pri" data-act="doc-transf" data-id="${c.id}">Transferido</button>` : ''}</div>`;
   if (open) {
     const r = (k, v, cls) => `<span class="k">${esc(k)}</span><span class="v ${cls || ''}">${v}</span>`;
-    h += `<div class="det"><h4>Investido por sócio</h4>${r(nm('A'), brl(d.invA))}${r(nm('B'), brl(d.invB))}<h4>Custos</h4>${d.consig ? r('Repasse ao dono (' + (c.dono || '') + ')', brl(d.repasse)) + r('Já repassado', brl(d.repPago)) + (d.emEspecie > 0 ? r('Pago em carro (troca)', brl(d.emEspecie)) : '') + r('Falta repassar', brl(d.repFalta)) : r('Entrada ' + nm('A'), brl(d.entA)) + r('Entrada ' + nm('B'), brl(d.entB))}${r('Gastos de ' + nm('A'), brl(d.gastA))}${r('Gastos de ' + nm('B'), brl(d.gastB))}${r('Previstos pendentes', brl(d.prev))}${r('Preço mínimo (zero a zero)', brl(d.pmin))}${r('Preço para a meta de lucro', brl(d.pmeta))}`;
+    h += `<div class="det"><h4>Investido por sócio</h4>${r(nm('A'), brl(d.invA))}${r(nm('B'), brl(d.invB))}<h4>Custos</h4>${d.consig ? (d.socio ? r('Parte do dono no carro (' + pctBR(d.fDono) + ')', brl(d.repDono)) + r('Lucro do dono' + (d.vendido ? '' : ' (previsto)'), brl(d.lucDono)) : '') + r('Repasse ao dono (' + (c.dono || '') + ')', brl(d.repasse)) + r('Já repassado', brl(d.repPago)) + (d.emEspecie > 0 ? r('Pago em carro (troca)', brl(d.emEspecie)) : '') + r('Falta repassar', brl(d.repFalta)) : r('Entrada ' + nm('A'), brl(d.entA)) + r('Entrada ' + nm('B'), brl(d.entB))}${r('Gastos de ' + nm('A'), brl(d.gastA))}${r('Gastos de ' + nm('B'), brl(d.gastB))}${r('Previstos pendentes', brl(d.prev))}${r('Preço mínimo (zero a zero)', brl(d.pmin))}${r('Preço para a meta de lucro', brl(d.pmeta))}`;
     if (c.fipe) h += '<h4>FIPE</h4>' + r('Valor FIPE', brl(Calc.num(c.fipe))) + (c.fipeRef ? r('Referência', esc(c.fipeRef)) : '');
     if (c.origemId) h += '<h4>Origem</h4>' + r('Veio da troca do', esc(carName(c.origemId)));
     if (d.vendido) {
@@ -141,7 +142,6 @@ views.resumo = {
     const nTransf = derived().filter(transfPendente).length, nDoc = derived().filter((d) => d.c.docPend).length;
     if (nTransf) al.push(['carros', `${nTransf} ${nTransf === 1 ? 'transferência pendente' : 'transferências pendentes'}`, true, 'st=Todos;docf=1;soConsig=']);
     if (nDoc) al.push(['carros', `${nDoc} ${nDoc === 1 ? 'carro com documentação pendente' : 'carros com documentação pendente'}`, false, 'st=Todos;docf=1;soConsig=']);
-    if (s.prevAtrasados) al.push(['previstos', `${s.prevAtrasados} ${s.prevAtrasados === 1 ? 'gasto previsto atrasado' : 'gastos previstos atrasados'}`]);
     // Resumo: o painel escuro responde "como estamos?"; abaixo, o que precisa de atenção e os sócios. O detalhe fica no Gerencial.
     const soc = Reports.porSocio(S.D, S.expenses, '', '', J);
     const proj = s.proj - (S.DV.jurosPend || 0), emEst = s.estoque + s.reservados;
@@ -271,13 +271,13 @@ function dividaSociosHtml() {
     KP('Dívida entre sócios', esc(frase(dv.saldo, 'Ninguém deve nada')), '', true, dv.A > 0.004 && dv.B > 0.004 ? `${esc(nm('A'))} deve ${brl(dv.A)} e ${esc(nm('B'))} deve ${brl(dv.B)}` : 'só as dívidas registradas aqui') +
     KP('Acerto dos carros vendidos', esc(frase(carros, 'Tudo acertado')), '', false, 'pelo que cada um investiu e recebeu nas vendas') +
     KP('No total', esc(frase(total, 'Ninguém deve nada')), '', false, 'dívida + acerto dos carros') + '</dl>';
-  if (S.canWrite) h += `<div class="toolbar"><button class="btn pri" data-act="pd-new" data-tipo="Dívida">Nova dívida</button><button class="btn" data-act="pd-new" data-tipo="Abatimento"${dv.saldo > 0 ? ' data-dev="B"' : dv.saldo < 0 ? ' data-dev="A"' : ''}>Abater</button><span class="mut small">Abatimento: quando quem deve paga a parte do outro num carro que entra, registre aqui escolhendo o carro.</span></div>`;
+  if (S.canWrite) h += `<div class="toolbar"><button class="btn pri" data-act="pd-new" data-tipo="Dívida">Nova dívida</button><button class="btn" data-act="pd-new" data-tipo="Abatimento" data-como="Num carro"${dv.saldo > 0 ? ' data-dev="B"' : dv.saldo < 0 ? ' data-dev="A"' : ''}>Abater num carro</button><button class="btn" data-act="pd-new" data-tipo="Abatimento" data-como="Dinheiro"${dv.saldo > 0 ? ' data-dev="B"' : dv.saldo < 0 ? ' data-dev="A"' : ''}>Pago em dinheiro</button><span class="mut small">Quem deve pode abater pagando a parte do outro num carro que entra, ou passando o valor em dinheiro ou Pix.</span></div>`;
   const rows = (S.pdebts || []).filter((x) => !x.deleted).sort((a, b) => String(b.date).localeCompare(String(a.date)) || b.id - a.id);
   h += `<section class="panel"><div class="panel-h"><h2>Histórico</h2></div>` + table([
     { label: 'Data', get: (x) => dmy(x.date) },
     { label: 'O que', get: (x) => x.tipo === 'Abatimento' ? `${esc(nm(x.devedor))} abateu` : `${esc(nm(x.devedor))} ficou devendo` },
     { label: 'Valor', r: true, get: (x) => (x.tipo === 'Abatimento' ? `<span class="pos">− ${brl(Calc.num(x.valor))}</span>` : `<b>${brl(Calc.num(x.valor))}</b>`) },
-    { label: 'Carro', get: (x) => (x.carId ? esc(carName(x.carId)) : '<span class="mut">—</span>') },
+    { label: 'Como', get: (x) => (x.carId && x.como !== 'Dinheiro' && x.como !== 'Pix' ? esc(carName(x.carId)) : x.como && x.tipo === 'Abatimento' ? esc(x.como) : '<span class="mut">—</span>') },
     { label: 'Observação', get: (x) => esc(x.obs || '') },
     { label: '', get: (x) => (S.canWrite ? `<div class="row-acts"><button class="btn sm" data-act="pd-edit" data-id="${x.id}">Editar</button><button class="btn sm" data-act="pd-del" data-id="${x.id}">Excluir</button></div>` : '') },
   ], rows, null, 'Nenhuma dívida registrada. Use "Nova dívida" quando um sócio ficar devendo ao outro.') + '</section>';
@@ -399,7 +399,7 @@ views.previstos = {
 
 views.historico = {
   mount(el) {
-    el.innerHTML = `<p class="mut" style="margin:0">Registro automático de quem criou, editou, moveu ou excluiu cada coisa. O histórico não pode ser editado nem apagado, nem pelo app.</p><div class="toolbar"><select id="hu" aria-label="Filtrar por pessoa"></select><select id="he" aria-label="Filtrar por tipo"><option value="">Todos os tipos</option>${[['car', 'Carros'], ['expense', 'Gastos'], ['planned', 'Previstos'], ['receipt', 'Recebimentos'], ['loan', 'Empréstimos'], ['payable', 'Contas a pagar'], ['pdebt', 'Dívida entre sócios'], ['settings', 'Ajustes'], ['user', 'Usuários']].map((e) => `<option value="${e[0]}"${S.ui.he === e[0] ? ' selected' : ''}>${e[1]}</option>`).join('')}</select></div><div id="list" class="log"></div>`;
+    el.innerHTML = `<div class="toolbar"><button class="btn sm" data-go="ajustes">‹ Voltar para Ajustes</button></div><p class="mut" style="margin:0">Registro automático de quem criou, editou, moveu ou excluiu cada coisa. O histórico não pode ser editado nem apagado, nem pelo app.</p><div class="toolbar"><select id="hu" aria-label="Filtrar por pessoa"></select><select id="he" aria-label="Filtrar por tipo"><option value="">Todos os tipos</option>${[['car', 'Carros'], ['expense', 'Gastos'], ['planned', 'Previstos'], ['receipt', 'Recebimentos'], ['loan', 'Empréstimos'], ['payable', 'Contas a pagar'], ['pdebt', 'Dívida entre sócios'], ['settings', 'Ajustes'], ['user', 'Usuários']].map((e) => `<option value="${e[0]}"${S.ui.he === e[0] ? ' selected' : ''}>${e[1]}</option>`).join('')}</select></div><div id="list" class="log"></div>`;
     $('#hu').onchange = function () { S.ui.hu = this.value; views.historico.paint(); };
     $('#he').onchange = function () { S.ui.he = this.value; views.historico.paint(); };
     this.paint();
@@ -431,6 +431,7 @@ views.ajustes = {
     const ex = S.cars.some((c) => c.example);
     const p = names();
     let h = '<div class="grid two">';
+    h += `<section class="panel"><h2>Histórico</h2><p class="mut">Quem criou, editou, moveu ou excluiu cada coisa no app.</p><div class="acts" style="margin-top:8px"><button class="btn" data-go="historico">Ver histórico</button></div></section>`;
     h += `<section class="panel"><h2>Parâmetros</h2><div class="fgrid"><div class="field"><label for="a_meta">Meta de margem de lucro (%)</label><input type="text" id="a_meta" inputmode="decimal" value="${esc(String(Math.round(S.settings.meta * 1000) / 10).replace('.', ','))}"><span class="hint">Usada no preço sugerido para a meta de lucro.</span></div>` +
       `<div class="field"><label for="a_alerta">Alerta de carro parado (dias)</label><input type="text" id="a_alerta" inputmode="numeric" value="${esc(String(S.settings.alerta))}"></div></div><div class="err" id="aerr"></div>` +
       (S.canWrite ? '<div class="acts" style="margin-top:8px"><button class="btn pri" data-act="save-set">Salvar ajustes</button></div>' : '<p class="mut">Seu perfil é só de leitura.</p>') + '</section>';

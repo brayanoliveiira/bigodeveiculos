@@ -8,7 +8,9 @@ import { renderReceipts, renderRepasses } from './vendas.js';
 import { renderParcelas } from './dividas.js';
 import { exportCsv } from './gerencial.js';
 
-const TABS = [['resumo', 'Resumo'], ['carros', 'Carros'], ['consignados', 'Consignados'], ['socios', 'Sócios'], ['onde', 'Onde estão'], ['vendas', 'Vendas'], ['apagar', 'Veículos a pagar'], ['emprestimos', 'Empréstimos'], ['gastos', 'Gastos'], ['previstos', 'Previstos'], ['gerencial', 'Gerencial'], ['historico', 'Histórico'], ['ajustes', 'Ajustes']];
+// Telas que ficam dentro de outra aba (sem botão próprio): a aba "mãe" aparece marcada.
+const SUB = { historico: 'ajustes' };
+const TABS = [['resumo', 'Resumo'], ['carros', 'Carros'], ['consignados', 'Consignados'], ['socios', 'Sócios'], ['onde', 'Onde estão'], ['vendas', 'Vendas'], ['apagar', 'Veículos a pagar'], ['emprestimos', 'Empréstimos'], ['gastos', 'Gastos'], ['gerencial', 'Gerencial'], ['ajustes', 'Ajustes']];
 const POLL_MS = 5000;
 let pollTimer = null;
 
@@ -95,7 +97,7 @@ async function start(user) {
   S.me = user;
   S.canWrite = user.role !== 'viewer';
   const h = (location.hash || '').replace('#', '');
-  if (views[h]) S.tab = h;
+  if (views[h] && (SUB[h] || TABS.some((t) => t[0] === h))) S.tab = h;
   $('#view').innerHTML = '<div class="empty"><p class="mut">Carregando…</p></div>';
   await reload();
   renderHeader();
@@ -111,7 +113,7 @@ function renderHeader() {
 
 /* ---------- abas ---------- */
 function renderTabs() {
-  $('#tabs').innerHTML = TABS.map((t) => `<button class="tab" data-go="${t[0]}"${S.tab === t[0] ? ' aria-current="page"' : ''}>${t[1]}</button>`).join('');
+  $('#tabs').innerHTML = TABS.map((t) => `<button class="tab" data-go="${t[0]}"${(SUB[S.tab] || S.tab) === t[0] ? ' aria-current="page"' : ''}>${t[1]}</button>`).join('');
 }
 async function mountTab() {
   recompute(); renderTabs();
@@ -257,9 +259,15 @@ document.addEventListener('click', async (ev) => {
     case 'cg-f': S.ui.cgf = id; views.consignados.paint(); break;
     case 'so-f': S.ui.sof = id; views.socios.paint(); break;
     case 'so-per': S.ui.sper = id; views.socios.paint(); break;
-    case 'pd-new': openForm('pdebt', null, { prefill: { tipo: b.dataset.tipo || 'Dívida', devedor: b.dataset.dev || '' }, heading: b.dataset.tipo === 'Abatimento' ? 'Abater dívida entre sócios' : 'Nova dívida entre sócios' }); break;
+    case 'pd-new': openForm('pdebt', null, { prefill: { tipo: b.dataset.tipo || 'Dívida', devedor: b.dataset.dev || '', como: b.dataset.como || '' }, heading: b.dataset.tipo === 'Abatimento' ? 'Abater dívida entre sócios' : 'Nova dívida entre sócios' }); break;
     case 'pd-edit': openForm('pdebt', itemOf('pdebt', id), { heading: 'Editar dívida entre sócios' }); break;
     case 'pd-del': it = itemOf('pdebt', id); confirmBox(`Excluir ${it.tipo === 'Abatimento' ? 'o abatimento' : 'a dívida'} de ${brl(Calc.num(it.valor))}? Dá para restaurar pelo Histórico.`, () => del('pdebt', it), 'Excluir'); break;
+    case 'car-reserva': { // um clique: reserva ou tira a reserva (sem confirmação, é só clicar de novo para voltar)
+      it = itemOf('car', id);
+      const res = it.status !== 'Reservado';
+      run(() => api('PATCH', `/api/cars/${id}`, { status: res ? 'Reservado' : 'Em estoque' }), res ? `${it.name} reservado.` : `${it.name} voltou para em estoque.`);
+      break;
+    }
     case 'doc-transf': // carro vendido: confirma antes de marcar como transferido para o comprador
       it = itemOf('car', id);
       confirmBox(`Confirmar que o ${it.name}${it.placa ? ' (' + it.placa + ')' : ''} já foi transferido para o comprador${it.comprador ? ', ' + it.comprador : ''}?`,

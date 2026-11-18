@@ -43,6 +43,7 @@ const F = {
     { k: 'entT', label: 'Valor da compra', t: 'money', hint: 'Quanto o carro custou. Carro de troca que fica com o dono do consignado: o valor em que entrou na troca.', showIf: (v) => notConsig(v) || !!v.origemId },
     { k: 'dono', label: 'Carro de terceiro? Dono do carro', t: 'text', full: true, hint: 'Deixe vazio se o carro é nosso. Preenchido = consignado: ninguém paga pelo carro, ele só fica aqui para vender.' },
     { k: 'repasse', label: 'Repasse ao dono (valor mínimo)', t: 'money', full: true, showIf: isConsig, hint: 'Quanto precisa ir para o dono. Os gastos do carro saem do valor da venda e o que sobrar é a comissão.' },
+    { k: 'donoSocio', label: 'O dono é sócio neste carro (lucro proporcional)', t: 'chk', full: true, showIf: isConsig, hint: 'Marque quando vocês também têm dinheiro no carro. O repasse é a parte do dono, os gastos são a parte de vocês, e o lucro da venda é dividido nessa proporção. Ex.: dono com 23 mil e vocês com 9 mil, vendido por 42 mil: o dono recebe R$ 30.187,50 e vocês R$ 11.812,50.' },
     { split: true },
     { k: 'ovrA', label: `Quanto ${names().A} pagou`, t: 'money', showIf: (v) => notConsig(v) && splitCustom() },
     { k: 'ovrB', label: `Quanto ${names().B} pagou`, t: 'money', showIf: (v) => notConsig(v) && splitCustom() },
@@ -109,7 +110,7 @@ const F = {
     { k: 'nParc', label: 'Número de parcelas', t: 'int', showIf: isParcelado },
     { k: 'venc1', label: '1º vencimento dos juros', t: 'date', showIf: isJurosMes, hint: 'Os outros meses vencem no mesmo dia. Vazio = 1 mês depois do empréstimo.' },
     { crono: 'lo_crono', showIf: isLivre },
-    { k: 'venc', label: 'Vencimento', t: 'date', showIf: (v) => !isLivre(v), hint: 'Juros mensais: dia da devolução (valor + juros do mês). Parcelado: 1º vencimento (vazio = 1 mês depois).' },
+    { k: 'venc', label: 'Vencimento', t: 'date', showIf: (v) => !isLivre(v), hint: 'Juros mensais: dia da devolução (valor + juros do mês); vazio = sem data para devolver, só os juros dos próximos 12 meses. Parcelado: 1º vencimento (vazio = 1 mês depois).' },
     { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada (padrão)' },
     { k: 'obs', label: 'Finalidade (para que foi o dinheiro)', t: 'text', full: true, hint: 'Ex.: comprar a Kombi. Com o carro escolhido acima, o app acompanha as trocas: se a Kombi for vendida e entrar um Celta, o dinheiro passa a estar no Celta.' },
   ], defaults: () => ({ data: today(), modo: 'Juros mensais' }) },
@@ -117,7 +118,8 @@ const F = {
     { k: 'tipo', label: 'Tipo', t: 'sel', opts: listOpts('pdTipos'), req: true, hint: 'Dívida: o sócio fica devendo ao outro. Abatimento: ele pagou parte (ex.: a parte do outro num carro).' },
     { k: 'devedor', label: 'Sócio que deve', t: 'sel', opts: partnerOpts, req: true },
     { k: 'valor', label: 'Valor', t: 'money', req: true }, { k: 'date', label: 'Data', t: 'date', req: true },
-    { k: 'carId', label: 'Em qual carro foi abatido', t: 'car', blank: 'Nenhum carro', full: true, showIf: (v) => v.tipo === 'Abatimento', hint: 'Ex.: Marcos pagou R$ 3 mil da parte do Brayan neste carro. A parte de cada um no carro não muda; só a dívida diminui.' },
+    { k: 'como', label: 'Como pagou', t: 'sel', opts: listOpts('pdComo'), blank: 'Não informado', showIf: (v) => v.tipo === 'Abatimento', hint: 'Num carro: pagou a parte do outro num carro que entrou. Dinheiro ou Pix: passou o valor direto.' },
+    { k: 'carId', label: 'Em qual carro foi abatido', t: 'car', blank: 'Nenhum carro', full: true, showIf: (v) => v.tipo === 'Abatimento' && v.como !== 'Dinheiro' && v.como !== 'Pix', hint: 'Ex.: Marcos pagou R$ 3 mil da parte do Brayan neste carro. A parte de cada um no carro não muda; só a dívida diminui.' },
     { k: 'obs', label: 'Observação', t: 'text', full: true },
   ], defaults: () => ({ date: today(), tipo: 'Dívida' }) },
   payable: { col: 'payables', title: 'conta a pagar', fields: () => [
@@ -219,7 +221,7 @@ export function openForm(mode, existing, opts = {}) {
         `<div class="field full"><label for="fp_ano">Ano e combustível</label><select id="fp_ano"></select></div></div><div id="fp_res" aria-live="polite"></div></div></div>`;
       continue;
     }
-    if (f.t === 'chk') { h += `<div class="field chk" data-k="${f.k}"><label><input type="checkbox" id="f_${f.k}"${init[f.k] ? ' checked' : ''}> ${esc(f.label)}</label></div>`; continue; }
+    if (f.t === 'chk') { h += `<div class="field chk${f.full ? ' full' : ''}" data-k="${f.k}"><label><input type="checkbox" id="f_${f.k}"${init[f.k] ? ' checked' : ''}> ${esc(f.label)}</label>${f.hint ? `<span class="hint">${esc(f.hint)}</span>` : ''}</div>`; continue; }
     h += `<div class="field${f.full ? ' full' : ''}" data-k="${f.k}"><label for="f_${f.k}">${esc(f.label)}${f.req ? ' *' : ''}</label>${control(f, init[f.k], selfId)}${f.hint ? `<span class="hint">${esc(f.hint)}</span>` : ''}</div>`;
   }
   h += '</div><div class="err" id="ferr" role="alert"></div><div class="acts"><button type="button" class="btn" data-x="cancel">Cancelar</button><button type="submit" class="btn pri" id="fsave">Salvar</button></div></form>';
@@ -602,7 +604,7 @@ function vendaDados() {
     const mantem = isConsig({ dono: ($('#f_dono') || {}).value || '' }) && $('#vd_mantem') && $('#vd_mantem').value === 'sim';
     if (mantem) {
       const dono = $('#f_dono').value.trim(), parte = round2(trocaValor - (nos ? out.nos.pago : 0));
-      Object.assign(out.troca, { dono, repasse: parte, entT: parte });
+      Object.assign(out.troca, { dono, repasse: parte, entT: parte, donoSocio: nos ? 1 : null });
       out.gastoTroca = nos ? out.nos : null;
       out.nos = null; // no carro vendido não sai dinheiro: a diferença é investimento no carro novo
       total = round2(parte + (nos ? 0 : cash)); out.total = total; out.mantem = { dono, parte };
@@ -665,7 +667,7 @@ function vendaRefresh(cur) {
   const v = vendaDados();
   if (v.err) { prev.innerHTML = `<span class="mut">${esc(v.err)}</span>`; return; }
   let t = !troca ? `Venda de <b>${brl(total)}</b>.`
-    : v.mantem ? `Venda de <b>${brl(v.total)}</b>, que o dono ${esc(v.mantem.dono)} deixou no ${esc(v.troca.name)}: ele entra consignado com <b>${brl(v.mantem.parte)}</b> do dono${v.gastoTroca ? ` e <b>${brl(v.gastoTroca.pago)}</b> nossos (diferença paga${v.gastoTroca.como ? ' com ' + esc(v.gastoTroca.como) : ''}), que voltam na venda dele` : ''}. O repasse deste carro fica pago em carro.`
+    : v.mantem ? `Venda de <b>${brl(v.total)}</b>, que o dono ${esc(v.mantem.dono)} deixou no ${esc(v.troca.name)}: ele entra consignado com <b>${brl(v.mantem.parte)}</b> do dono${v.gastoTroca ? ` e <b>${brl(v.gastoTroca.pago)}</b> nossos (diferença paga${v.gastoTroca.como ? ' com ' + esc(v.gastoTroca.como) : ''}), que voltam na venda dele, com o lucro dividido na proporção de cada um` : ''}. O repasse deste carro fica pago em carro.`
     : v.nos ? `Venda de <b>${brl(v.total)}</b>: o comprador deu o ${esc(v.troca.name)} (<b>${brl(v.troca.entT)}</b>) e nós pagamos <b>${brl(v.nos.pago)}</b> de diferença${v.nos.como ? ' com ' + esc(v.nos.como) : ''}${v.nos.quem ? `, só ${esc(names()[v.nos.quem])}` : ', metade cada'}.`
       : `Venda de <b>${brl(v.total)}</b>: <b>${brl(round2(v.total - v.troca.entT))}</b> em dinheiro e <b>${brl(v.troca.entT)}</b> no ${esc(v.troca.name)}.`;
   if (v.parts) {

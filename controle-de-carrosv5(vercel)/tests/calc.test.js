@@ -134,7 +134,15 @@ test('empréstimo com juros mensais: juros todo mês e devolução no vencimento
   // juros em %: 3% de 10.000 = 300 por mês; devolução fora do dia do empréstimo ainda paga o juros daquele mês
   const q = C.loanPlan({ valor: 10000, data: '2026-01-10', modo: 'Juros mensais', taxaMes: 0.03, venc: '2026-03-20' });
   assert.deepEqual(q.map((x) => [x.tipo, x.due, x.valor]), [['Juros', '2026-02-10', 300], ['Devolução', '2026-03-20', 10300]]);
-  assert.deepEqual(C.loanPlan({ valor: 1000, data: '2026-01-10', modo: 'Juros mensais', jurosMes: 10 }), []); // sem vencimento
+  // sem data de devolução: só os juros, 12 meses (ou até a data pedida), sem devolução
+  const s = C.loanPlan({ valor: 1000, data: '2026-01-10', modo: 'Juros mensais', jurosMes: 10 });
+  assert.equal(s.length, 12); assert.ok(s.every((x) => x.tipo === 'Juros' && x.valor === 10)); assert.equal(s[11].due, '2027-01-10');
+  assert.equal(C.loanPlan({ valor: 1000, data: '2026-01-10', modo: 'Juros mensais', jurosMes: 10 }, '2026-04-10').length, 3);
+  assert.deepEqual(C.loanPlan({ valor: 1000, data: '2026-01-10', modo: 'Juros mensais' }), []); // sem juros e sem data: nada a pagar por mês
+  // no resumo de dívidas, o valor emprestado sem data segue devido (sem vencimento)
+  const dv = C.debts([{ id: 1, loanId: 7, tipo: 'Juros', due: '2026-02-10', valor: 10, status: 'Pago' }], [{ id: 7, valor: 1000, data: '2026-01-10', modo: 'Juros mensais', jurosMes: 10 }], [], '2026-03-01');
+  near(dv.porLoan[7].falta, 1000, 'falta o valor emprestado'); near(dv.aDevolver, 1000, 'a devolver sem data'); assert.equal(dv.porLoan[7].quitado, false);
+  near(dv.porLoan[7].juros, 10, 'juros = contas de juros'); assert.equal(dv.atrasado, 0);
 });
 
 test('empréstimo parcelado: tabela Price e sem juros com soma exata', () => {
@@ -300,4 +308,20 @@ test('dívida entre sócios: dívidas somam, abatimentos descontam', () => {
     { tipo: 'Dívida', devedor: 'B', valor: 500, deleted: true },
   ]);
   assert.equal(s.B, 6000); assert.equal(s.A, 1000); assert.equal(s.saldo, 5000, 'B ainda deve 5 mil a A');
+});
+
+test('consignado em sociedade com o dono: lucro dividido na proporção (dono 23 mil, nós 9 mil)', () => {
+  const car = (o) => ({ id: 'n', name: 'Carro novo', dono: 'João', repasse: 23000, entT: 23000, donoSocio: 1, anun: 42000, status: 'Em estoque', ...o });
+  const ex = [{ id: 1, carId: 'n', valor: 4500, quem: 'A' }, { id: 2, carId: 'n', valor: 4500, quem: 'B' }];
+  // em estoque, anunciado por 42 mil: projeção só da nossa parte do lucro
+  let d = C.compute([car()], ex, [], SET, HOJE).n;
+  near(d.proj, 2812.5, 'lucro projetado nosso = 10.000 × 9/32'); near(d.lucDono, 7187.5, 'lucro previsto do dono');
+  // vendido por 42 mil
+  d = C.compute([car({ status: 'Vendido', vvenda: 42000, dvenda: HOJE })], ex, [], SET, HOJE).n;
+  near(d.repasse, 30187.5, 'dono recebe 23.000 + 7.187,50'); near(d.lucro, 2812.5, 'nosso lucro');
+  near(d.retA + d.retB, 11812.5, 'nós recebemos 9.000 + 2.812,50'); near(d.retA, 5906.25, 'metade de cada');
+  near(d.repFalta, 30187.5, 'falta repassar ao dono');
+  // sem a sociedade, o dono recebe só o repasse fixo
+  d = C.compute([car({ donoSocio: 0, status: 'Vendido', vvenda: 42000, dvenda: HOJE })], ex, [], SET, HOJE).n;
+  near(d.repasse, 23000, 'repasse fixo'); near(d.lucro, 10000, 'comissão inteira');
 });

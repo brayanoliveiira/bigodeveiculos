@@ -308,8 +308,11 @@ test('montadora: nomes padronizados e tirados do nome do carro', async () => {
 test('empréstimos e contas a pagar: cadastro, programação, troca das pendentes e validações', async () => {
   const adm = client();
   await adm('POST', '/api/login', { username: 'brayan', password: 'senha-do-brayan' });
-  const bad = await adm('POST', '/api/loans', { credor: 'Mãe', data: '2026-08-15', valor: 57000, modo: 'Juros mensais', jurosMes: 2000 });
-  assert.equal(bad.status, 400); assert.match(bad.json.error || bad.json.message || '', /devolvido/);
+  const semData = await adm('POST', '/api/loans', { credor: 'Tio', data: '2026-08-15', valor: 1000, modo: 'Juros mensais' });
+  assert.equal(semData.status, 201, 'empréstimo sem data de devolução é aceito');
+  await adm('DELETE', `/api/loans/${semData.json.item.id}`);
+  const bad = await adm('POST', '/api/loans', { credor: 'Mãe', data: '2026-08-15', valor: 57000, modo: 'Juros mensais', jurosMes: 2000, venc: '2026-08-01' });
+  assert.equal(bad.status, 400); assert.match(bad.json.error || bad.json.message || '', /depois da data/);
   const l = (await adm('POST', '/api/loans', { credor: 'Mãe', data: '2026-08-15', valor: 57000, modo: 'Juros mensais', jurosMes: 2000, venc: '2026-12-15' })).json.item;
   const parts = [{ label: 'Juros set/26', tipo: 'Juros', due: '2026-09-15', valor: 2000 }, { label: 'Devolução', tipo: 'Devolução', due: '2026-12-15', valor: 57000, quem: 'A' }];
   assert.equal((await adm('POST', '/api/payables/plan', { loanId: l.id, parts })).status, 201);

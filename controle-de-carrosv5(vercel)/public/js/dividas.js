@@ -20,8 +20,9 @@ function condicao(l, g) {
   const tx = Calc.num(l.taxaMes);
   if (l.modo === 'Juros mensais') {
     const v = Calc.num(l.valor), j = Calc.num(l.jurosMes) != null ? Calc.num(l.jurosMes) : Calc.jurosDaTaxa(v, tx);
-    if (!(j > 0)) return `Juros não informado, devolve em ${dmy(l.venc)}`;
-    return `Juros de ${brl(j)}/mês${v > 0 ? ` (${(j / v * 100).toFixed(1).replace('.', ',')}% a.m.)` : ''}, devolve em ${dmy(l.venc)}`;
+    const dev = l.venc ? `devolve em ${dmy(l.venc)}` : 'sem data para devolver';
+    if (!(j > 0)) return `Sem juros, ${dev}`;
+    return `Juros de ${brl(j)}/mês${v > 0 ? ` (${(j / v * 100).toFixed(1).replace('.', ',')}% a.m.)` : ''}, ${dev}`;
   }
   if (l.modo === 'Personalizado') {
     const n = g ? g.n : 0, tot = g ? g.total : 0;
@@ -49,6 +50,7 @@ function trailHtml(l) {
 }
 
 function situacaoPill(g) {
+  if (g && g.aDevolver > 0.004 && !(g.atrasado > 0.004)) return `<span class="pill">${g.n ? 'Em dia, ' : ''}sem data para devolver</span>`;
   if (!g || !g.n) return '<span class="pill soon">Sem parcelas</span>';
   if (g.quitado || g.falta <= 0.004) return '<span class="pill ok">Quitado</span>';
   if (g.atrasado > 0.004) return `<span class="pill late">Vencido ${brl(g.atrasado)}</span>`;
@@ -154,7 +156,8 @@ export function renderParcelas(owner) {
   m.hidden = false;
   m.innerHTML = `<div class="sheet wide dv-sum"><h2>${title}</h2>` +
     (isLoan ? `<p class="mut small" style="margin:0">${esc(condicao(l, g))}. Quem paga: ${esc(quemTxt(l.quem).toLowerCase())}.</p>${l.obs ? `<p class="small" style="margin:0"><b>Finalidade:</b> ${esc(l.obs)}</p>` : ''}${l.carId != null ? `<div class="small">${trailHtml(l)}</div>` : ''}` : '') +
-    `<dl class="grid kpis" style="margin:0">${K('Total', brl(g ? g.total : 0))}${K('Pago', brl(g ? g.pago : 0))}${K('Falta', brl(g ? g.falta : 0), '', true)}${isLoan ? K('Juros total', brl(g ? g.juros : 0)) : ''}</dl>` +
+    `<dl class="grid kpis" style="margin:0">${K('Total', brl(g ? g.total : 0))}${K('Pago', brl(g ? g.pago : 0))}${K('Falta', brl(g ? g.falta : 0), '', true)}${isLoan ? K('Juros total', brl(g ? g.juros : 0)) : ''}${g && g.aDevolver > 0.004 ? K('A devolver, sem data', brl(g.aDevolver)) : ''}</dl>` +
+    (g && g.aDevolver > 0.004 ? '<p class="mut small" style="margin:0">Sem data para devolver: os juros estão lançados até 12 meses à frente ("Refazer parcelas pendentes" lança mais). Quando combinarem a devolução, edite o empréstimo e informe a data.</p>' : '') +
     table([
       { label: 'Parcela', get: (p) => `<b>${esc(p.label || p.tipo || '—')}</b>${p.obs ? `<div class="mut small">${esc(p.obs)}</div>` : ''}` },
       { label: 'Vencimento', get: (p) => dmy(p.due) },
@@ -171,7 +174,8 @@ export function renderParcelas(owner) {
 /** Parcelas que o empréstimo deveria ter, sem repetir as que já foram pagas (mesmo tipo e vencimento). */
 function loanParts(l) {
   const pagos = (S.payables || []).filter((p) => !p.deleted && p.loanId === l.id && p.status === 'Pago');
-  return Calc.loanPlan(l).filter((x) => !pagos.some((p) => p.tipo === x.tipo && p.due === x.due))
+  // sem data de devolução: juros lançados até 12 meses à frente (refazer as parcelas estende)
+  return Calc.loanPlan(l, Calc.semData(l) ? Calc.addMonths(today(), 12) : undefined).filter((x) => !pagos.some((p) => p.tipo === x.tipo && p.due === x.due))
     .map((x) => ({ ...x, quem: l.quem || null, status: 'Pendente' }));
 }
 async function planLoan(l, replace, livres) {
@@ -179,7 +183,7 @@ async function planLoan(l, replace, livres) {
   // numeração continua depois das que já foram pagas (ex.: 2/3 e 3/3 quando a 1/3 está paga)
   const pagas = replace ? (S.payables || []).filter((p) => !p.deleted && p.loanId === l.id && p.status === 'Pago').length : 0;
   const parts = livres ? livres.map((r, i) => ({ label: `${pagas + i + 1}/${pagas + livres.length}`, tipo: 'Parcela', due: r.due, valor: r.valor, quem: l.quem || null, status: 'Pendente' })) : loanParts(l);
-  if (!parts.length) { toast('Nada a programar: confira valor, datas e juros.'); return; }
+  if (!parts.length) { if (!Calc.semData(l)) toast('Nada a programar: confira valor, datas e juros.'); return; }
   await api('POST', '/api/payables/plan', { loanId: l.id, replace: !!replace, parts });
   await hooks.reload();
 }

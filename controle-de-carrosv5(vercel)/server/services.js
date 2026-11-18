@@ -85,8 +85,7 @@ async function crossCheck(db, name, merged, selfId) {
   if (name === 'loans') {
     if (!(merged.valor > 0)) throw new HttpError(400, 'O valor emprestado precisa ser maior que zero.');
     if (merged.modo === 'Juros mensais') {
-      if (isBlank(merged.venc)) throw new HttpError(400, 'Informe a data em que o valor precisa ser devolvido.');
-      if (merged.venc <= merged.data) throw new HttpError(400, 'A devolução precisa ser depois da data do empréstimo.');
+      if (!isBlank(merged.venc) && merged.venc <= merged.data) throw new HttpError(400, 'A devolução precisa ser depois da data do empréstimo.');
     }
     if (merged.modo === 'Parcelado' && !(merged.nParc >= 1)) throw new HttpError(400, 'Informe o número de parcelas.');
   }

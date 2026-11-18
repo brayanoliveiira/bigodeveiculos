@@ -9,7 +9,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const lists = {
-  locs: ['Pátio / Loja', 'Oficina mecânica', 'Funilaria e pintura', 'Elétrica', 'Lavagem / estética',
+  locs: ['Pátio / Loja', 'Oficina mecânica', 'Funilaria e pintura', 'Elétrica', 'Capotaria', 'Lavagem / estética',
     'Despachante / vistoria', 'Com cliente (test drive)', 'Outro', 'Entregue'],
   cats: ['Mecânica', 'Peças', 'Funilaria e pintura', 'Pneus', 'Elétrica', 'Documentação e transferência',
     'IPVA / multas / licenciamento', 'Limpeza e estética', 'Combustível', 'Anúncio / marketing', 'Comissão', 'Outros'],
@@ -21,6 +21,7 @@ const lists = {
   divis: ['50/50', 'Proporcional ao investido', 'Personalizado'],
   // Em nome de quem está o documento do carro. 'Comprador' = já transferido para o cliente (comparado em public/js/views.js).
   docNomes: ['Antigo dono', 'Nosso nome', 'Comprador'],
+  pdComo: ['Num carro', 'Dinheiro', 'Pix'], // como o abatimento foi pago
   pdTipos: ['Dívida', 'Abatimento'], // dívida entre sócios (comparado em public/js/calc.js)
   // Dívidas (empréstimos e carros a pagar). Os textos de modos, origens e status são comparados em public/js/calc.js: não renomeie.
   loanModes: ['Juros mensais', 'Parcelado', 'Personalizado'],

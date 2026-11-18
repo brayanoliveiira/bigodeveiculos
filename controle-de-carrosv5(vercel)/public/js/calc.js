@@ -103,6 +103,15 @@ var Calc = (function () {
     });
     for (id in out) {
       var d = out[id], c = d.c;
+      // Consignado em sociedade com o dono: cada lado tem uma parte do carro (dono = repasse, nós = gastos) e a venda
+      // (lucro ou prejuízo) é dividida nessa proporção. Ex.: dono 23 mil, nós 9 mil, venda 42 mil: o dono recebe 30.187,50.
+      d.socio = d.consig && !!c.donoSocio && d.repasse > 0;
+      d.repDono = d.repasse; d.fDono = 1; d.lucDono = 0;
+      if (d.socio) {
+        var vs = num(c.vvenda), vend = c.status === 'Vendido' && vs !== null;
+        d.fDono = d.repasse / (d.repasse + d.gast + (vend ? 0 : d.prev));
+        if (vend) { d.repasse = r2(vs * d.fDono); d.lucDono = r2(d.repasse - d.repDono); }
+      }
       d.custo = d.entA + d.entB + d.repasse + d.gast; // consignado: o repasse ao dono é custo (sai da venda), mas ninguém o investiu
       d.repFalta = d.consig ? r2(Math.max(0, d.repasse - d.repPago - d.emEspecie)) : 0;
       var rr = splitOf(d.repFalta, null, d.rq);
@@ -183,6 +192,7 @@ var Calc = (function () {
       d.margem = (d.lucro !== null && d.custo > 0) ? d.lucro / d.custo : null;
       d.perdeu = (d.vendido && an !== null && vv !== null) ? Math.max(0, an - vv) : null;
       d.proj = (!d.vendido && an !== null) ? an - d.pmin : null;
+      if (d.socio && d.proj !== null) { d.lucDono = r2(d.proj * d.fDono); d.proj = d.proj - d.lucDono; }
       d.dias = c.dcompra ? (d.vendido ? (c.dvenda ? diff(c.dvenda, c.dcompra) : null) : diff(today, c.dcompra)) : null;
       d.diasLoc = (!d.vendido && c.locdesde) ? diff(today, c.locdesde) : null;
       d.atrasoLoc = !d.vendido && !!c.locprev && c.locprev < today;
@@ -263,11 +273,25 @@ var Calc = (function () {
   function jurosDaConta(x, l) { return x.tipo === 'Juros' ? N0(x.valor) : x.tipo === 'Devolução' ? Math.max(0, r2(N0(x.valor) - N0(l.valor))) : 0; }
   /* Juros do mês a partir da % (0 a 1): em reais inteiros, arredondado para cima (3,3% de 33.333 = R$ 1.100). */
   function jurosDaTaxa(valor, taxa) { var c = Math.round(N0(valor) * N0(taxa) * 100); return c > 0 ? Math.ceil(c / 100 - 0.001) : 0; }
-  function loanPlan(l) {
+  /* Juros mensais sem data de devolução (l.venc vazio): só os juros, até "ate" (padrão: 12 meses de juros).
+     O valor emprestado fica como dívida sem data (debts: aDevolver) até informarem a devolução. */
+  function semData(l) { return !!l && l.modo === 'Juros mensais' && !l.venc; }
+  function loanPlan(l, ate) {
     var v = N0(l.valor), out = [], i;
     if (v <= 0 || !l.data) return out;
     if (l.modo === 'Juros mensais') {
-      if (!l.venc || l.venc <= l.data) return out;
+      if (semData(l)) {
+        var js = num(l.jurosMes) !== null ? N0(l.jurosMes) : jurosDaTaxa(v, l.taxaMes);
+        if (!(js > 0)) return out;
+        var an = l.venc1 || l.data, sh = l.venc1 ? 0 : 1, lim = ate || addMonths(an, 11 + sh);
+        for (i = 0; i < 120; i++) {
+          var dd = addMonths(an, i + sh);
+          if (dd > lim) break;
+          out.push({ label: 'Juros ' + mesAno(dd), tipo: 'Juros', due: dd, valor: js });
+        }
+        return out;
+      }
+      if (l.venc <= l.data) return out;
       var j = num(l.jurosMes) !== null ? N0(l.jurosMes) : jurosDaTaxa(v, l.taxaMes);
       // Juros todo mês no dia do 1º vencimento (venc1; vazio = 1 mês depois do empréstimo), até o mês anterior à devolução.
       var anchor = l.venc1 || l.data, shift = l.venc1 ? 0 : 1;
@@ -351,11 +375,14 @@ var Calc = (function () {
     (loans || []).forEach(function (l) { if (!l.deleted) lv[l.id] = l; });
     (cars || []).forEach(function (c) { if (!c.deleted) cv[c.id] = c; });
     var em30 = addDays(today, 30);
+    function grp(key, id) { return s[key][id] || (s[key][id] = { total: 0, pago: 0, falta: 0, A: 0, B: 0, atrasado: 0, prox: null, proxValor: 0, n: 0, nPago: 0, jurosPagos: 0, fim: null, itens: [], aDevolver: 0 }); }
+    Object.keys(lv).forEach(function (id) { if (semData(lv[id])) grp('porLoan', id); });
+    s.aDevolver = 0;
     (payables || []).forEach(function (x) {
       if (x.deleted) return;
       if (x.loanId != null ? !lv[x.loanId] : !cv[x.carId]) return;
       var v = N0(x.valor), key = x.loanId != null ? 'porLoan' : 'porCar', id = x.loanId != null ? x.loanId : x.carId;
-      var g = s[key][id] || (s[key][id] = { total: 0, pago: 0, falta: 0, A: 0, B: 0, atrasado: 0, prox: null, proxValor: 0, n: 0, nPago: 0, jurosPagos: 0, fim: null, itens: [] });
+      var g = grp(key, id);
       g.total += v; g.n++; g.itens.push(x);
       if (!g.fim || x.due > g.fim) g.fim = x.due;
       if (x.status === 'Pago') {
@@ -376,6 +403,11 @@ var Calc = (function () {
       var l = lv[id], g = s.porLoan[id];
       g.itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); });
       g.juros = r2(g.total - N0(l.valor)); // juros do empréstimo inteiro (pago + a pagar)
+      if (semData(l) && !g.itens.some(function (x) { return x.tipo === 'Devolução'; })) { // sem data de devolução: as contas são só de juros; o valor emprestado segue devido, sem vencimento
+        var pv = N0(l.valor), ps = splitOf(pv, l.quem);
+        g.juros = r2(g.total); g.aDevolver = pv; g.falta += pv; g.A += ps[0]; g.B += ps[1];
+        s.aDevolver += pv; s.total += pv; s.A += ps[0]; s.B += ps[1];
+      }
       g.quitado = g.falta <= 0.004;
       if (proporcional(l) && g.total > 0) g.jurosPagos = r2(g.pago * g.juros / g.total); // parcela = parte juros + parte valor
       if (l.modo === 'Juros mensais' && g.falta > 0.004) s.jurosMes += num(l.jurosMes) !== null ? N0(l.jurosMes) : jurosDaTaxa(N0(l.valor), l.taxaMes);
@@ -385,6 +417,6 @@ var Calc = (function () {
     Object.keys(s.porCar).forEach(function (id) { s.porCar[id].itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); }); });
     return s;
   }
-  return { dividaSocios: dividaSocios, jurosDaTaxa: jurosDaTaxa, loanPlan: loanPlan, debts: debts, jurosPagos: jurosPagos, loanTrail: loanTrail, isConsig: isConsig, compute: compute, summary: summary, plan: plan, addMonths: addMonths, splitOf: splitOf, entry: entry, num: num, diff: diff, addDays: addDays, P: P };
+  return { semData: semData, dividaSocios: dividaSocios, jurosDaTaxa: jurosDaTaxa, loanPlan: loanPlan, debts: debts, jurosPagos: jurosPagos, loanTrail: loanTrail, isConsig: isConsig, compute: compute, summary: summary, plan: plan, addMonths: addMonths, splitOf: splitOf, entry: entry, num: num, diff: diff, addDays: addDays, P: P };
 })();
 if (typeof module !== 'undefined') module.exports = Calc;
