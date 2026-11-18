@@ -273,12 +273,15 @@ const mlabelBr = (k) => (/^\d{4}-\d{2}$/.test(k) ? `${MES_BR[+k.slice(5) - 1]}/$
 function dividaSociosHtml() {
   const dv = Calc.dividaSocios(S.pdebts);
   const J = Calc.jurosPagos(S.payables, S.loans), sm = Calc.summary(S.D, S.expenses, S.planned, S.settings, today(), S.year, J);
-  const frase = (v, nada) => (Math.abs(v) < 0.005 ? nada : v > 0 ? `${nm('B')} deve ${brl(v)} a ${nm('A')}` : `${nm('A')} deve ${brl(-v)} a ${nm('B')}`);
+  // número grande: só o valor; quem deve a quem vai embaixo (o texto inteiro não cabia no cartão)
+  const valor = (v, nada) => (Math.abs(v) < 0.005 ? nada : brl(Math.abs(v)));
+  const quem = (v) => (v > 0 ? `${nm('B')} deve a ${nm('A')}` : `${nm('A')} deve a ${nm('B')}`);
+  const sub = (v, resto) => (Math.abs(v) < 0.005 ? resto : esc(quem(v)));
   const carros = sm.acerto[0].saldo, total = Math.round((dv.saldo + carros) * 100) / 100;
   let h = '<dl class="grid kpis" style="margin:0">' +
-    KP('Dívida entre sócios', esc(frase(dv.saldo, 'Ninguém deve nada')), '', true, dv.A > 0.004 && dv.B > 0.004 ? `${esc(nm('A'))} deve ${brl(dv.A)} e ${esc(nm('B'))} deve ${brl(dv.B)}` : 'só as dívidas registradas aqui') +
-    KP('Acerto dos carros vendidos', esc(frase(carros, 'Tudo acertado')), '', false, 'pelo que cada um investiu e recebeu nas vendas') +
-    KP('No total', esc(frase(total, 'Ninguém deve nada')), '', false, 'dívida + acerto dos carros') + '</dl>';
+    KP('Dívida entre sócios', valor(dv.saldo, 'Ninguém deve'), '', true, Math.abs(dv.saldo) >= 0.005 && dv.A > 0.004 && dv.B > 0.004 ? `${esc(quem(dv.saldo))} (${esc(nm('A'))} deve ${brl(dv.A)} e ${esc(nm('B'))} ${brl(dv.B)})` : sub(dv.saldo, 'só as dívidas lançadas aqui')) +
+    KP('Acerto dos carros vendidos', valor(carros, 'Tudo acertado'), '', false, sub(carros, 'pelo que cada um investiu e recebeu')) +
+    KP('No total', valor(total, 'Ninguém deve'), '', false, sub(total, 'dívida + acerto dos carros')) + '</dl>';
   if (S.canWrite) h += `<div class="toolbar"><button class="btn pri" data-act="pd-new" data-tipo="Dívida">Nova dívida</button><button class="btn" data-act="pd-new" data-tipo="Abatimento" data-como="Num carro"${dv.saldo > 0 ? ' data-dev="B"' : dv.saldo < 0 ? ' data-dev="A"' : ''}>Abater num carro</button><button class="btn" data-act="pd-new" data-tipo="Abatimento" data-como="Dinheiro"${dv.saldo > 0 ? ' data-dev="B"' : dv.saldo < 0 ? ' data-dev="A"' : ''}>Pago em dinheiro</button><span class="mut small">Quem deve pode abater pagando a parte do outro num carro que entra, ou passando o valor em dinheiro ou Pix.</span></div>`;
   const rows = (S.pdebts || []).filter((x) => !x.deleted).sort((a, b) => String(b.date).localeCompare(String(a.date)) || b.id - a.id);
   h += `<section class="panel"><div class="panel-h"><h2>Histórico</h2></div>` + table([
