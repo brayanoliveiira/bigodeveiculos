@@ -279,3 +279,25 @@ test('carro vendido: quanto cada sócio recebe (entrada + gastos + lucro) e o ac
   const e = C.compute(cs, [{ carId: 2, valor: 1000, quem: 'B' }], [], { meta: 0.1 }, HOJE, [], [], [])[2];
   near(e.retA, 2000, 'comissão de A'); near(e.retB, 1000 + 2000, 'gasto + comissão de B'); near(e.retA + e.retB, 5000, 'venda − repasse');
 });
+
+test('consignado vendido em que o dono deixa o valor no carro da troca (que segue consignado com ele)', () => {
+  // vendido por 23 mil; o comprador deu um carro de 32 mil; pagamos 9 mil de diferença (gasto nosso no carro novo)
+  const cars = [
+    { id: 1, name: 'Velho', dono: 'Zé', repasse: 23000, status: 'Vendido', vvenda: 23000, dvenda: '2026-11-10' },
+    { id: 2, name: 'Novo', dono: 'Zé', repasse: 23000, entT: 23000, origemId: 1, status: 'Em estoque', anun: 40000 },
+  ];
+  const D = C.compute(cars, [{ carId: 2, valor: 4500, quem: 'A' }, { carId: 2, valor: 4500, quem: 'B' }], [], { meta: 0.1 }, HOJE, [], [], []);
+  near(D[1].cash, 0, 'nenhum dinheiro na venda'); near(D[1].repFalta, 0, 'repasse pago em carro'); near(D[1].lucro, 0, 'comissão zero (os 3 mil eram do dono)');
+  assert.equal(D[2].entregue, false, 'o carro novo é estoque nosso');
+  near(D[2].proj, 40000 - 23000 - 9000, 'comissão prevista do carro novo'); near(D[2].invA + D[2].invB, 9000, 'nosso dinheiro no carro novo');
+});
+
+test('dívida entre sócios: dívidas somam, abatimentos descontam', () => {
+  const s = C.dividaSocios([
+    { tipo: 'Dívida', devedor: 'B', valor: 9000 },
+    { tipo: 'Abatimento', devedor: 'B', valor: 3000, carId: 5 },
+    { tipo: 'Dívida', devedor: 'A', valor: 1000 },
+    { tipo: 'Dívida', devedor: 'B', valor: 500, deleted: true },
+  ]);
+  assert.equal(s.B, 6000); assert.equal(s.A, 1000); assert.equal(s.saldo, 5000, 'B ainda deve 5 mil a A');
+});

@@ -67,6 +67,7 @@ const F = {
     { g: 'Divisão do lucro' },
     { k: 'divis', label: 'Como dividir o lucro deste carro', t: 'sel', opts: listOpts('divis'), blank: '50/50 (padrão)', full: true, hint: 'Em carro consignado, é a divisão da comissão. Para uma pessoa ficar com tudo, use Personalizado com 100% ou 0%.' },
     { k: 'pcust', label: `% do lucro de ${names().A}`, t: 'pct', showIf: (v) => v.divis === 'Personalizado' },
+    { k: 'obs', label: 'Observações', t: 'text', full: true, hint: 'Qualquer detalhe do carro ou da negociação.' },
   ], defaults: () => ({ status: 'Em estoque', dcompra: today() }) },
   expense: { col: 'expenses', title: 'gasto', fields: () => [
     { k: 'carId', label: 'Carro', t: 'car', req: true, full: true },
@@ -112,6 +113,13 @@ const F = {
     { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada (padrão)' },
     { k: 'obs', label: 'Finalidade (para que foi o dinheiro)', t: 'text', full: true, hint: 'Ex.: comprar a Kombi. Com o carro escolhido acima, o app acompanha as trocas: se a Kombi for vendida e entrar um Celta, o dinheiro passa a estar no Celta.' },
   ], defaults: () => ({ data: today(), modo: 'Juros mensais' }) },
+  pdebt: { col: 'partnerDebts', title: 'dívida entre sócios', fields: () => [
+    { k: 'tipo', label: 'Tipo', t: 'sel', opts: listOpts('pdTipos'), req: true, hint: 'Dívida: o sócio fica devendo ao outro. Abatimento: ele pagou parte (ex.: a parte do outro num carro).' },
+    { k: 'devedor', label: 'Sócio que deve', t: 'sel', opts: partnerOpts, req: true },
+    { k: 'valor', label: 'Valor', t: 'money', req: true }, { k: 'date', label: 'Data', t: 'date', req: true },
+    { k: 'carId', label: 'Em qual carro foi abatido', t: 'car', blank: 'Nenhum carro', full: true, showIf: (v) => v.tipo === 'Abatimento', hint: 'Ex.: Marcos pagou R$ 3 mil da parte do Brayan neste carro. A parte de cada um no carro não muda; só a dívida diminui.' },
+    { k: 'obs', label: 'Observação', t: 'text', full: true },
+  ], defaults: () => ({ date: today(), tipo: 'Dívida' }) },
   payable: { col: 'payables', title: 'conta a pagar', fields: () => [
     { k: 'label', label: 'Parcela', t: 'text' }, { k: 'due', label: 'Vencimento', t: 'date', req: true },
     { k: 'valor', label: 'Valor', t: 'money', req: true }, { k: 'forma', label: 'Forma de pagamento', t: 'sel', opts: listOpts('formasPag'), blank: 'Não informada' },
@@ -303,6 +311,11 @@ export function openForm(mode, existing, opts = {}) {
     const venda = mode === 'car' && send.status === 'Vendido' ? vendaDados() : null;
     if (venda && venda.err) { $('#ferr').textContent = venda.err; return; }
     if (venda && venda.troca) send.vvenda = venda.total;
+    if (venda && venda.nos) { // diferença paga por nós: quem pagou fica como "quem ficou com o dinheiro" (o dinheiro da venda é negativo)
+      send.quemrec = venda.nos.quem; send.recValA = null;
+      const nota = `Na troca, pagamos ${brl(venda.nos.pago)} de diferença ao comprador${venda.nos.como ? ' com ' + venda.nos.como : ''}.`;
+      send.obs = send.obs ? `${send.obs}\n${nota}` : nota;
+    }
     if (opts.beforeSave) { const e = opts.beforeSave(send); if (e) { $('#ferr').textContent = e; return; } } // lê o que não é campo do item (ex.: pagamentos personalizados)
     if (opts.extra) Object.assign(send, opts.extra);
     saving = true; $('#fsave').disabled = true;
@@ -541,7 +554,12 @@ function vendaHtml(existing) {
   let h = '';
   if (filhos.length) h += `<div class="field full" data-vdbox><label>Carro na troca</label><span>${filhos.map((c) => `${esc(c.name)}${c.placa ? ' (' + esc(c.placa) + ')' : ''}, entrou por ${brl(Calc.num(c.entT))}`).join('; ')}</span></div>`;
   else h += `<div class="field" data-vdbox><label for="vd_troca">Entrou carro na troca?</label><select id="vd_troca"><option value="">Não</option><option value="sim">Sim</option></select></div>
-    <div class="field" data-vd="troca"><label for="vd_cash">Recebido em dinheiro / Pix</label><input type="text" id="vd_cash" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-vd="troca"><label for="vd_dif">A diferença</label><select id="vd_dif"><option value="">O comprador pagou (dinheiro / Pix)</option><option value="nos">Nós pagamos (o carro da troca vale mais)</option></select></div>
+    <div class="field" data-vd="troca" data-vdif="rec"><label for="vd_cash">Recebido em dinheiro / Pix</label><input type="text" id="vd_cash" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-vd="troca" data-vdif="nos"><label for="vd_pago">Quanto pagamos ao comprador</label><input type="text" id="vd_pago" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-vd="troca" data-vdif="nos"><label for="vd_pquem">Quem pagou a diferença</label><select id="vd_pquem"><option value="">Os dois (metade cada)</option><option value="A">Só ${esc(names().A)}</option><option value="B">Só ${esc(names().B)}</option></select></div>
+    <div class="field" data-vd="troca" data-vdif="nos"><label for="vd_pcomo">Pagamos com</label><input type="text" id="vd_pcomo" autocomplete="off" placeholder="Ex.: Pix, um iPhone 18 Pro Max"></div>
+    <div class="field full" data-vd="troca" data-vconsig><label for="vd_mantem">O dono do consignado manteve o valor no carro da troca?</label><select id="vd_mantem"><option value="">Não, ele recebe o repasse</option><option value="sim">Sim, o carro da troca fica consignado com ele</option></select><span class="hint">Ex.: em vez de receber os R$ 23 mil, o dono deixou esse valor no carro novo, que vocês vão vender.</span></div>
     <div class="field row-start" data-vd="troca"><label for="vd_placa">Placa do carro da troca</label><input type="text" id="vd_placa" style="text-transform:uppercase" autocapitalize="characters" spellcheck="false" autocomplete="off"><span class="hint" id="vd_plres">Com a placa completa, modelo e ano vêm sozinhos.</span></div>
     <div class="field" data-vd="troca"><label for="vd_nome">Carro da troca</label><input type="text" id="vd_nome" autocomplete="off" placeholder="Ex.: VW Gol 1.0"></div>
     <div class="field" data-vd="troca"><label for="vd_ano">Ano</label><input type="text" id="vd_ano" inputmode="numeric"></div>
@@ -563,7 +581,10 @@ function vendaDados() {
   let total = numDe('f_vvenda') || 0, trocaValor = 0;
   const out = { troca: null, parts: null, total };
   if (troca) {
-    const nome = $('#vd_nome').value.trim(), cash = numDe('vd_cash') || 0;
+    const nos = $('#vd_dif') && $('#vd_dif').value === 'nos';
+    // "Nós pagamos": o carro da troca vale mais que a venda; a diferença sai do nosso bolso (dinheiro da venda negativo)
+    const cash = nos ? -(numDe('vd_pago') || 0) : (numDe('vd_cash') || 0);
+    const nome = $('#vd_nome').value.trim();
     trocaValor = numDe('vd_valor') || 0;
     if (!nome) return { err: 'Informe o carro que entrou na troca.' };
     if (!(trocaValor > 0)) return { err: 'Informe o valor em que pegamos o carro da troca.' };
@@ -571,12 +592,27 @@ function vendaDados() {
     const ano = parseInt($('#vd_ano').value, 10), km = parseInt(String($('#vd_km').value).replace(/\D/g, ''), 10);
     out.troca = { name: nome, placa: placa || null, ano: Number.isNaN(ano) ? null : ano, km: Number.isNaN(km) ? null : km, entT: trocaValor, marca: trocaInfo.marca || null, cor: trocaInfo.cor || null };
     total = round2(cash + trocaValor); out.total = total;
+    if (nos) {
+      if (!(cash < 0)) return { err: 'Informe quanto vocês pagaram ao comprador.' };
+      if (!(total > 0)) return { err: 'O que pagamos não pode ser maior que o valor do carro da troca.' };
+      out.nos = { pago: -cash, quem: $('#vd_pquem').value || null, como: $('#vd_pcomo').value.trim() };
+    }
+    // Consignado em que o dono deixou o valor no carro da troca: o carro da troca fica consignado com ele (repasse = parte dele)
+    // e o que nós pagamos de diferença vira gasto nosso no carro novo (volta na venda dele).
+    const mantem = isConsig({ dono: ($('#f_dono') || {}).value || '' }) && $('#vd_mantem') && $('#vd_mantem').value === 'sim';
+    if (mantem) {
+      const dono = $('#f_dono').value.trim(), parte = round2(trocaValor - (nos ? out.nos.pago : 0));
+      Object.assign(out.troca, { dono, repasse: parte, entT: parte });
+      out.gastoTroca = nos ? out.nos : null;
+      out.nos = null; // no carro vendido não sai dinheiro: a diferença é investimento no carro novo
+      total = round2(parte + (nos ? 0 : cash)); out.total = total; out.mantem = { dono, parte };
+    }
   } else {
     // venda sem troca agora, mas com carro de troca já cadastrado: o dinheiro é o total menos esses carros
     const box = document.querySelector('[data-vdbox] span');
     if (box && !$('#vd_troca')) trocaValor = (S.cars || []).filter((c) => !c.deleted && c.origemId === Number(($('#form').dataset.carId || 0))).reduce((a, c) => a + (Calc.num(c.entT) || 0), 0);
   }
-  const sel = $('#vd_modo'), modo = sel ? sel.value : '';
+  const sel = $('#vd_modo'), modo = out.nos || out.gastoTroca ? '' : (sel ? sel.value : ''); // pagamos a diferença: não há dinheiro a receber
   if (modo) {
     const cash = round2(total - trocaValor), base = $('#f_dvenda').value || today();
     if (!(cash > 0)) return { err: 'Não sobra dinheiro a receber: a venda foi só com troca. Escolha "À vista".' };
@@ -599,19 +635,28 @@ function vendaDados() {
 }
 /** Depois de salvar a venda: cadastra o carro da troca (ligado a esta venda) e programa os recebimentos. */
 async function salvarVenda(carId, v, send) {
-  if (v.troca) await api('POST', '/api/cars', { ...v.troca, origemId: carId, dcompra: send.dvenda || today(), status: 'Em estoque', loc: 'Pátio / Loja' });
+  let novo = null;
+  if (v.troca) novo = (await api('POST', '/api/cars', { ...v.troca, origemId: carId, dcompra: send.dvenda || today(), status: 'Em estoque', loc: 'Pátio / Loja' })).item;
+  if (novo && v.gastoTroca) { // diferença paga por nós no carro que ficou consignado com o dono: gasto nosso, de quem pagou
+    const g = v.gastoTroca, desc = `Diferença paga na troca${g.como ? ' (' + g.como + ')' : ''}`;
+    const quem = g.quem ? [[g.quem, g.pago]] : [['A', round2(g.pago / 2)], ['B', round2(g.pago - round2(g.pago / 2))]];
+    for (const [q, valor] of quem) await api('POST', '/api/expenses', { carId: novo.id, date: send.dvenda || today(), cat: 'Outros', desc, valor, quem: q });
+  }
   if (v.parts && v.parts.length) await api('POST', `/api/cars/${carId}/plan`, { parts: v.parts });
 }
 function vendaRefresh(cur) {
   const sold = isSold(cur);
   document.querySelectorAll('[data-vdbox]').forEach((el) => { el.hidden = !sold; });
   const troca = !!$('#vd_troca') && $('#vd_troca').value === 'sim';
-  document.querySelectorAll('[data-vd]').forEach((el) => { el.hidden = !sold || !troca; });
-  const modo = $('#vd_modo') ? $('#vd_modo').value : '', dataFixa = modo === 'prazo' && $('#vd_prazo') && $('#vd_prazo').value === 'data';
+  const nos = troca && $('#vd_dif') && $('#vd_dif').value === 'nos';
+  document.querySelectorAll('[data-vd]').forEach((el) => { el.hidden = !sold || !troca || (el.dataset.vdif === 'nos' && !nos) || (el.dataset.vdif === 'rec' && nos) || (el.hasAttribute('data-vconsig') && !isConsig(cur)); });
+  // pagamos a diferença: não há dinheiro a receber, então "Como recebemos" some
+  document.querySelectorAll('[data-vdbox]').forEach((el) => { if (el.querySelector('#vd_modo')) el.hidden = !sold || nos; });
+  const modo = !nos && $('#vd_modo') ? $('#vd_modo').value : '', dataFixa = modo === 'prazo' && $('#vd_prazo') && $('#vd_prazo').value === 'data';
   document.querySelectorAll('[data-vd2]').forEach((el) => { const t = el.dataset.vd2.split(' '); el.hidden = !sold || !(t.includes(modo) || (dataFixa && t.includes('prazo-data'))); });
   // com troca, o total da venda é a soma do dinheiro com o valor do carro (só leitura)
   const vv = $('#f_vvenda');
-  if (vv) { vv.readOnly = troca; if (troca) vv.value = moneyField(round2((numDe('vd_cash') || 0) + (numDe('vd_valor') || 0))); }
+  if (vv) { vv.readOnly = troca; if (troca) vv.value = moneyField(Math.max(0, round2((nos ? -(numDe('vd_pago') || 0) : (numDe('vd_cash') || 0)) + (numDe('vd_valor') || 0)))); }
   const prev = $('#vd_prev');
   if (!prev) return;
   prev.hidden = !sold;
@@ -619,7 +664,10 @@ function vendaRefresh(cur) {
   if (!sold || !(total > 0)) { prev.textContent = ''; return; }
   const v = vendaDados();
   if (v.err) { prev.innerHTML = `<span class="mut">${esc(v.err)}</span>`; return; }
-  let t = troca ? `Venda de <b>${brl(v.total)}</b>: <b>${brl(round2(v.total - v.troca.entT))}</b> em dinheiro e <b>${brl(v.troca.entT)}</b> no ${esc(v.troca.name)}.` : `Venda de <b>${brl(total)}</b>.`;
+  let t = !troca ? `Venda de <b>${brl(total)}</b>.`
+    : v.mantem ? `Venda de <b>${brl(v.total)}</b>, que o dono ${esc(v.mantem.dono)} deixou no ${esc(v.troca.name)}: ele entra consignado com <b>${brl(v.mantem.parte)}</b> do dono${v.gastoTroca ? ` e <b>${brl(v.gastoTroca.pago)}</b> nossos (diferença paga${v.gastoTroca.como ? ' com ' + esc(v.gastoTroca.como) : ''}), que voltam na venda dele` : ''}. O repasse deste carro fica pago em carro.`
+    : v.nos ? `Venda de <b>${brl(v.total)}</b>: o comprador deu o ${esc(v.troca.name)} (<b>${brl(v.troca.entT)}</b>) e nós pagamos <b>${brl(v.nos.pago)}</b> de diferença${v.nos.como ? ' com ' + esc(v.nos.como) : ''}${v.nos.quem ? `, só ${esc(names()[v.nos.quem])}` : ', metade cada'}.`
+      : `Venda de <b>${brl(v.total)}</b>: <b>${brl(round2(v.total - v.troca.entT))}</b> em dinheiro e <b>${brl(v.troca.entT)}</b> no ${esc(v.troca.name)}.`;
   if (v.parts) {
     const fut = v.parts.filter((p) => p.status !== 'Recebido').sort((a, b) => a.due.localeCompare(b.due));
     t += ` ${v.ent > 0 ? `Recebemos <b>${brl(v.ent)}</b> na hora e falta receber` : 'Falta receber'} ${datasTexto(fut)}.`;

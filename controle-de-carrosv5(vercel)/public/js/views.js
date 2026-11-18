@@ -3,7 +3,7 @@ import { $, esc, brl, money, pct, dmy, today, stamp, sign, initials, marcaOf, ta
 import { S, LISTS, names, itemOf, carName, liveCars, locClass } from './state.js';
 
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-const KIND_NAME = { car: 'carro', expense: 'gasto', planned: 'gasto previsto', receipt: 'recebimento', payment: 'pagamento', repasse: 'repasse', loan: 'empréstimo', payable: 'conta a pagar', settings: '', user: 'usuário' };
+const KIND_NAME = { car: 'carro', expense: 'gasto', planned: 'gasto previsto', receipt: 'recebimento', payment: 'pagamento', repasse: 'repasse', loan: 'empréstimo', payable: 'conta a pagar', pdebt: 'dívida entre sócios', settings: '', user: 'usuário' };
 const ROLE_NAME = { admin: 'Administrador', member: 'Membro', viewer: 'Só leitura' };
 const nm = (code) => names()[code] || '—';
 const derived = () => Object.values(S.D);
@@ -211,6 +211,79 @@ views.carros = {
   },
 };
 
+/* ---------- Sócios: lucro de cada um (detalhado) e dívida entre os sócios ---------- */
+views.socios = {
+  mount(el) {
+    el.innerHTML = '<div class="toolbar"><div class="chips" id="sochips"></div><span class="grow"></span><div class="chips" id="soper"></div></div><div id="list" class="stack"></div>';
+    this.paint();
+  },
+  paint() {
+    const box = $('#list');
+    if (!box) return;
+    const f = S.ui.sof || 'lucro';
+    $('#sochips').innerHTML = [['lucro', 'Lucro por sócio'], ['divida', 'Dívida entre sócios']].map(([k, l]) => `<button class="chip" data-act="so-f" data-id="${k}" aria-pressed="${f === k}">${l}</button>`).join('');
+    const per = S.ui.sper || 'ano';
+    $('#soper').innerHTML = f === 'lucro' ? [['mes', 'Este mês'], ['ano', 'Este ano'], ['tudo', 'Tudo']].map(([k, l]) => `<button class="chip" data-act="so-per" data-id="${k}" aria-pressed="${per === k}">${l}</button>`).join('') : '';
+    $('#soper').hidden = f !== 'lucro';
+    box.innerHTML = f === 'lucro' ? lucroSocios(per) : dividaSociosHtml();
+  },
+};
+const KP = (t, v, cls, hero, sub) => `<div class="kpi${hero ? ' hero' : ''}"><dt>${esc(t)}</dt><dd class="${cls || ''}">${v}</dd>${sub ? `<dd class="sub">${sub}</dd>` : ''}</div>`;
+/** Lucro de cada sócio no período: por carro vendido, menos a metade dos juros pagos, e por mês. */
+function lucroSocios(per) {
+  const p = Reports.periodo(per, today()), J = Calc.jurosPagos(S.payables, S.loans, p.from, p.to);
+  const soc = Reports.porSocio(S.D, S.expenses, p.from, p.to, J), rk = Reports.ranking(S.D, p.from, p.to).rows.sort((a, b) => String(b.dvenda).localeCompare(String(a.dvenda)));
+  const lm = Reports.lucroMensal(S.D, p.from, p.to, J);
+  let h = '<dl class="grid kpis" style="margin:0">' + ['A', 'B'].map((x) => {
+    const v = soc[x].vendidos;
+    return KP(`Lucro líquido de ${nm(x)}`, money(v.lucLiq), v.lucLiq < 0 ? 'neg' : '', true, `${brl(v.luc)} dos carros${v.juros ? `, menos ${brl(v.juros)} de juros` : ''}`) +
+      KP(`Investido hoje por ${nm(x)}`, money(soc[x].estoque.inv), '', false, `${soc[x].estoque.n} ${soc[x].estoque.n === 1 ? 'carro' : 'carros'} em estoque`);
+  }).join('') + '</dl>';
+  const divisao = (r) => { const d = S.D[r.carId]; if (!d) return ''; const pa = Math.round(d.pA * 100); return pa === 50 ? 'metade cada' : `${pa}% e ${100 - pa}%`; };
+  const tA = rk.reduce((a, r) => a + r.lucA, 0), tB = rk.reduce((a, r) => a + r.lucB, 0), tL = rk.reduce((a, r) => a + r.lucro, 0);
+  const foot = { Carro: 'Total dos carros', Lucro: brl(tL), [nm('A')]: brl(tA), [nm('B')]: brl(tB) };
+  h += `<section class="panel"><div class="panel-h"><h2>Lucro de cada carro vendido</h2></div>` + table([
+    { label: 'Carro', get: (r) => `<b>${esc(r.car)}</b><div class="mut small">${r.dvenda ? 'vendido em ' + dmy(r.dvenda) : ''}${divisao(r) ? `, ${divisao(r)}` : ''}</div>` },
+    { label: 'Venda', r: true, get: (r) => brl(r.vvenda) },
+    { label: 'Lucro', r: true, get: (r) => `<span class="${sign(r.lucro)}">${brl(r.lucro)}</span>` },
+    { label: nm('A'), r: true, get: (r) => `<span class="${sign(r.lucA)}">${brl(r.lucA)}</span>` },
+    { label: nm('B'), r: true, get: (r) => `<span class="${sign(r.lucB)}">${brl(r.lucB)}</span>` },
+  ], rk, rk.length ? foot : null, 'Nenhum carro vendido no período.') +
+    (J.total ? `<p class="note">Juros de empréstimos pagos no período: ${brl(J.total)}, metade de cada (${brl(J.total / 2)}). Lucro líquido: ${esc(nm('A'))} <b>${brl(soc.A.vendidos.lucLiq)}</b> e ${esc(nm('B'))} <b>${brl(soc.B.vendidos.lucLiq)}</b>.</p>` : '') + '</section>';
+  const meses = lm.rows.filter((r) => r.n || r.juros);
+  h += `<section class="panel"><div class="panel-h"><h2>Lucro líquido por mês</h2></div>` + table([
+    { label: 'Mês', get: (r) => esc(mlabelBr(r.mes)) }, { label: 'Vendas', r: true, get: (r) => r.n },
+    { label: nm('A'), r: true, get: (r) => `<span class="${sign(r.liqA)}">${brl(r.liqA)}</span>` },
+    { label: nm('B'), r: true, get: (r) => `<span class="${sign(r.liqB)}">${brl(r.liqB)}</span>` },
+    { label: 'Total', r: true, get: (r) => `<b class="${sign(r.liq)}">${brl(r.liq)}</b>` },
+  ], meses, meses.length ? { Mês: 'Total', Vendas: lm.total.n, [nm('A')]: brl(lm.total.liqA), [nm('B')]: brl(lm.total.liqB), Total: brl(lm.total.liq) } : null, 'Sem vendas no período.') + '</section>';
+  return h;
+}
+const MES_BR = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const mlabelBr = (k) => (/^\d{4}-\d{2}$/.test(k) ? `${MES_BR[+k.slice(5) - 1]}/${k.slice(2, 4)}` : k || 'Sem data');
+/** Dívida entre os sócios: saldo, o acerto dos carros vendidos e o histórico de dívidas e abatimentos. */
+function dividaSociosHtml() {
+  const dv = Calc.dividaSocios(S.pdebts);
+  const J = Calc.jurosPagos(S.payables, S.loans), sm = Calc.summary(S.D, S.expenses, S.planned, S.settings, today(), S.year, J);
+  const frase = (v, nada) => (Math.abs(v) < 0.005 ? nada : v > 0 ? `${nm('B')} deve ${brl(v)} a ${nm('A')}` : `${nm('A')} deve ${brl(-v)} a ${nm('B')}`);
+  const carros = sm.acerto[0].saldo, total = Math.round((dv.saldo + carros) * 100) / 100;
+  let h = '<dl class="grid kpis" style="margin:0">' +
+    KP('Dívida entre sócios', esc(frase(dv.saldo, 'Ninguém deve nada')), '', true, dv.A > 0.004 && dv.B > 0.004 ? `${esc(nm('A'))} deve ${brl(dv.A)} e ${esc(nm('B'))} deve ${brl(dv.B)}` : 'só as dívidas registradas aqui') +
+    KP('Acerto dos carros vendidos', esc(frase(carros, 'Tudo acertado')), '', false, 'pelo que cada um investiu e recebeu nas vendas') +
+    KP('No total', esc(frase(total, 'Ninguém deve nada')), '', false, 'dívida + acerto dos carros') + '</dl>';
+  if (S.canWrite) h += `<div class="toolbar"><button class="btn pri" data-act="pd-new" data-tipo="Dívida">Nova dívida</button><button class="btn" data-act="pd-new" data-tipo="Abatimento"${dv.saldo > 0 ? ' data-dev="B"' : dv.saldo < 0 ? ' data-dev="A"' : ''}>Abater</button><span class="mut small">Abatimento: quando quem deve paga a parte do outro num carro que entra, registre aqui escolhendo o carro.</span></div>`;
+  const rows = (S.pdebts || []).filter((x) => !x.deleted).sort((a, b) => String(b.date).localeCompare(String(a.date)) || b.id - a.id);
+  h += `<section class="panel"><div class="panel-h"><h2>Histórico</h2></div>` + table([
+    { label: 'Data', get: (x) => dmy(x.date) },
+    { label: 'O que', get: (x) => x.tipo === 'Abatimento' ? `${esc(nm(x.devedor))} abateu` : `${esc(nm(x.devedor))} ficou devendo` },
+    { label: 'Valor', r: true, get: (x) => (x.tipo === 'Abatimento' ? `<span class="pos">− ${brl(Calc.num(x.valor))}</span>` : `<b>${brl(Calc.num(x.valor))}</b>`) },
+    { label: 'Carro', get: (x) => (x.carId ? esc(carName(x.carId)) : '<span class="mut">—</span>') },
+    { label: 'Observação', get: (x) => esc(x.obs || '') },
+    { label: '', get: (x) => (S.canWrite ? `<div class="row-acts"><button class="btn sm" data-act="pd-edit" data-id="${x.id}">Editar</button><button class="btn sm" data-act="pd-del" data-id="${x.id}">Excluir</button></div>` : '') },
+  ], rows, null, 'Nenhuma dívida registrada. Use "Nova dívida" quando um sócio ficar devendo ao outro.') + '</section>';
+  return h;
+}
+
 /* ---------- Consignados: carros de terceiros que a gente vende ---------- */
 views.consignados = {
   mount(el) {
@@ -326,7 +399,7 @@ views.previstos = {
 
 views.historico = {
   mount(el) {
-    el.innerHTML = `<p class="mut" style="margin:0">Registro automático de quem criou, editou, moveu ou excluiu cada coisa. O histórico não pode ser editado nem apagado, nem pelo app.</p><div class="toolbar"><select id="hu" aria-label="Filtrar por pessoa"></select><select id="he" aria-label="Filtrar por tipo"><option value="">Todos os tipos</option>${[['car', 'Carros'], ['expense', 'Gastos'], ['planned', 'Previstos'], ['receipt', 'Recebimentos'], ['loan', 'Empréstimos'], ['payable', 'Contas a pagar'], ['settings', 'Ajustes'], ['user', 'Usuários']].map((e) => `<option value="${e[0]}"${S.ui.he === e[0] ? ' selected' : ''}>${e[1]}</option>`).join('')}</select></div><div id="list" class="log"></div>`;
+    el.innerHTML = `<p class="mut" style="margin:0">Registro automático de quem criou, editou, moveu ou excluiu cada coisa. O histórico não pode ser editado nem apagado, nem pelo app.</p><div class="toolbar"><select id="hu" aria-label="Filtrar por pessoa"></select><select id="he" aria-label="Filtrar por tipo"><option value="">Todos os tipos</option>${[['car', 'Carros'], ['expense', 'Gastos'], ['planned', 'Previstos'], ['receipt', 'Recebimentos'], ['loan', 'Empréstimos'], ['payable', 'Contas a pagar'], ['pdebt', 'Dívida entre sócios'], ['settings', 'Ajustes'], ['user', 'Usuários']].map((e) => `<option value="${e[0]}"${S.ui.he === e[0] ? ' selected' : ''}>${e[1]}</option>`).join('')}</select></div><div id="list" class="log"></div>`;
     $('#hu').onchange = function () { S.ui.hu = this.value; views.historico.paint(); };
     $('#he').onchange = function () { S.ui.he = this.value; views.historico.paint(); };
     this.paint();

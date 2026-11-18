@@ -32,6 +32,7 @@ const entities = {
       docTransf: { t: 'date', label: L('Transferido para o comprador em') },
       docPend: { t: 'bool', label: L('Documentação pendente') },
       docObs: { t: 'text', max: 300, label: L('O que falta na documentação') },
+      obs: { t: 'text', max: 1000, label: L('Observações') },
       fipe: { t: 'money', label: L('Valor FIPE') },
       fipeRef: { t: 'text', max: 80, label: L('Referência FIPE') },
       dcompra: { t: 'date', label: L('Data da compra') },
@@ -151,6 +152,19 @@ const entities = {
       obs: { t: 'text', max: 300, label: L('Observação') },
     },
     labelOf: async (r, db) => `${r.label || r.tipo || 'Conta'} — ${r.loanId ? await loanName(db, r.loanId) : await carName(db, r.carId)}`,
+  },
+  partnerDebts: {
+    table: 'partnerDebts',
+    kind: 'pdebt',
+    fields: {
+      date: { t: 'date', req: true, label: L('Data') },
+      tipo: { t: 'enum', values: lists.pdTipos, req: true, label: L('Tipo') },
+      devedor: { t: 'partner', req: true, label: L('Sócio que deve') },
+      valor: { t: 'money', req: true, label: L('Valor') },
+      carId: { t: 'ref', ref: 'cars', label: L('Carro') },
+      obs: { t: 'text', max: 300, label: L('Observação') },
+    },
+    labelOf: (r) => `${r.tipo} de ${BRL.format(r.valor)} entre sócios`,
   },
   planned: {
     table: 'planned',

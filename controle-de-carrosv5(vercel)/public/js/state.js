@@ -1,10 +1,10 @@
 // Estado único da tela. Os dados vêm do servidor (GET /api/data); o resto é preferência de tela.
-export const LISTS = { locs: [], cats: [], status: [], pstatus: [], rstatus: [], divis: [], docNomes: [], roles: [] };
+export const LISTS = { locs: [], cats: [], status: [], pstatus: [], rstatus: [], divis: [], docNomes: [], pdTipos: [], roles: [] };
 
 export const S = {
   me: null,           // { id, username, name, role }
   canWrite: false,
-  cars: [], expenses: [], planned: [], receipts: [], payments: [], repasses: [], loans: [], payables: [], audit: [],
+  cars: [], expenses: [], planned: [], receipts: [], payments: [], repasses: [], loans: [], payables: [], pdebts: [], audit: [],
   settings: { meta: 0.1, alerta: 45, partners: { A: 'Sócio 1', B: 'Sócio 2' } },
   version: 0,
   loaded: false, auditLoaded: false,
@@ -19,7 +19,7 @@ export const S = {
 
 export const names = () => S.settings.partners;
 export const itemOf = (kind, id) => {
-  const arr = kind === 'car' ? S.cars : kind === 'expense' ? S.expenses : kind === 'planned' ? S.planned : kind === 'receipt' ? S.receipts : kind === 'payment' ? S.payments : kind === 'repasse' ? S.repasses : kind === 'loan' ? S.loans : kind === 'payable' ? S.payables : [];
+  const arr = kind === 'car' ? S.cars : kind === 'expense' ? S.expenses : kind === 'planned' ? S.planned : kind === 'receipt' ? S.receipts : kind === 'payment' ? S.payments : kind === 'repasse' ? S.repasses : kind === 'loan' ? S.loans : kind === 'payable' ? S.payables : kind === 'pdebt' ? S.pdebts : [];
   return arr.find((x) => x.id === Number(id));
 };
 export const carName = (id) => { const c = S.cars.find((x) => x.id === id); return c ? c.name : '—'; };

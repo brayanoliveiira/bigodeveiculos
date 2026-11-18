@@ -81,8 +81,13 @@ var Calc = (function () {
         // Carro consignado vendido com carro na troca, e o carro da troca fica com o dono: ele não é nosso (ninguém investiu nele)
         // e o valor dele conta como repasse pago em carro. Vale quando o carro de troca tem o mesmo dono e nenhum repasse próprio.
         var oc = out[o], tc = out[id];
-        if (oc.consig && tc.consig && !N0(tc.c.repasse) && String(oc.c.dono).trim().toLowerCase() === String(tc.c.dono).trim().toLowerCase()) {
+        var mesmoDono = oc.consig && tc.consig && String(oc.c.dono).trim().toLowerCase() === String(tc.c.dono).trim().toLowerCase();
+        if (mesmoDono && !N0(tc.c.repasse)) {
           tc.entregue = true; oc.emEspecie += N0(tc.c.entT);
+        } else if (mesmoDono) {
+          // O dono deixou o valor da venda dentro do carro da troca, que segue consignado com ele (repasse próprio):
+          // o repasse do carro vendido conta como pago em carro, e o carro da troca continua no nosso estoque.
+          oc.emEspecie += N0(tc.c.entT);
         }
       }
     }
@@ -284,6 +289,17 @@ var Calc = (function () {
     for (i = 0; i < n; i++) out.push({ label: (i + 1) + '/' + n, tipo: 'Parcela', due: addMonths(anchor, i + shift), valor: (each + (i === n - 1 ? left : 0)) / 100 });
     return out;
   }
+  /* Dívida entre os sócios: "Dívida" soma no que o sócio deve, "Abatimento" desconta.
+     Devolve { A, B (quanto cada um ainda deve ao outro), saldo (> 0: B deve a A; < 0: A deve a B) }. */
+  function dividaSocios(list) {
+    var s = { A: 0, B: 0 };
+    (list || []).forEach(function (x) {
+      if (x.deleted || (x.devedor !== 'A' && x.devedor !== 'B')) return;
+      s[x.devedor] += N0(x.valor) * (x.tipo === 'Abatimento' ? -1 : 1);
+    });
+    s.A = r2(s.A); s.B = r2(s.B); s.saldo = r2(s.B - s.A);
+    return s;
+  }
   /* Rastreio do dinheiro de um empréstimo pelos carros: começa no carro comprado com ele e segue as trocas
      (carro vendido -> carros que entraram na troca dele, origemId). Enquanto um carro da cadeia não foi vendido, o dinheiro "está" nele.
      Quando o último é vendido sem carro de troca, o dinheiro virou dinheiro. skip(c) = true ignora o carro (ex.: troca que ficou com o dono do consignado).
@@ -369,6 +385,6 @@ var Calc = (function () {
     Object.keys(s.porCar).forEach(function (id) { s.porCar[id].itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); }); });
     return s;
   }
-  return { jurosDaTaxa: jurosDaTaxa, loanPlan: loanPlan, debts: debts, jurosPagos: jurosPagos, loanTrail: loanTrail, isConsig: isConsig, compute: compute, summary: summary, plan: plan, addMonths: addMonths, splitOf: splitOf, entry: entry, num: num, diff: diff, addDays: addDays, P: P };
+  return { dividaSocios: dividaSocios, jurosDaTaxa: jurosDaTaxa, loanPlan: loanPlan, debts: debts, jurosPagos: jurosPagos, loanTrail: loanTrail, isConsig: isConsig, compute: compute, summary: summary, plan: plan, addMonths: addMonths, splitOf: splitOf, entry: entry, num: num, diff: diff, addDays: addDays, P: P };
 })();
 if (typeof module !== 'undefined') module.exports = Calc;

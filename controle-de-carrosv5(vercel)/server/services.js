@@ -81,6 +81,7 @@ async function crossCheck(db, name, merged, selfId) {
     const car = await db.get('SELECT dono FROM cars WHERE id = ?', merged.carId);
     if (!car || !String(car.dono || '').trim()) throw new HttpError(400, 'Só carros consignados (com dono) têm repasse.');
   }
+  if (name === 'partnerDebts' && !(merged.valor > 0)) throw new HttpError(400, 'O valor precisa ser maior que zero.');
   if (name === 'loans') {
     if (!(merged.valor > 0)) throw new HttpError(400, 'O valor emprestado precisa ser maior que zero.');
     if (merged.modo === 'Juros mensais') {
@@ -367,6 +368,7 @@ async function getData(db) {
     payments: await rows('payments'),
     repasses: await rows('repasses'),
     loans: await rows('loans'),
+    partnerDebts: await rows('partnerDebts'),
     payables: await rows('payables'),
     settings: {
       meta: Number(await getSetting(db, 'meta')),

@@ -8,7 +8,7 @@ import { renderReceipts, renderRepasses } from './vendas.js';
 import { renderParcelas } from './dividas.js';
 import { exportCsv } from './gerencial.js';
 
-const TABS = [['resumo', 'Resumo'], ['carros', 'Carros'], ['consignados', 'Consignados'], ['onde', 'Onde estão'], ['vendas', 'Vendas'], ['apagar', 'Veículos a pagar'], ['emprestimos', 'Empréstimos'], ['gastos', 'Gastos'], ['previstos', 'Previstos'], ['gerencial', 'Gerencial'], ['historico', 'Histórico'], ['ajustes', 'Ajustes']];
+const TABS = [['resumo', 'Resumo'], ['carros', 'Carros'], ['consignados', 'Consignados'], ['socios', 'Sócios'], ['onde', 'Onde estão'], ['vendas', 'Vendas'], ['apagar', 'Veículos a pagar'], ['emprestimos', 'Empréstimos'], ['gastos', 'Gastos'], ['previstos', 'Previstos'], ['gerencial', 'Gerencial'], ['historico', 'Histórico'], ['ajustes', 'Ajustes']];
 const POLL_MS = 5000;
 let pollTimer = null;
 
@@ -38,7 +38,7 @@ async function loadUsers() {
 /** Busca tudo de novo no servidor e redesenha a aba atual (sem apagar o que a pessoa está digitando). */
 async function reload() {
   const d = await api('GET', '/api/data');
-  S.cars = d.cars; S.expenses = d.expenses; S.planned = d.planned; S.receipts = d.receipts; S.payments = d.payments || []; S.repasses = d.repasses || []; S.loans = d.loans || []; S.payables = d.payables || []; S.settings = d.settings; S.version = d.version; S.loaded = true;
+  S.cars = d.cars; S.expenses = d.expenses; S.planned = d.planned; S.receipts = d.receipts; S.payments = d.payments || []; S.repasses = d.repasses || []; S.loans = d.loans || []; S.payables = d.payables || []; S.pdebts = d.partnerDebts || []; S.settings = d.settings; S.version = d.version; S.loaded = true;
   if (S.tab === 'historico') await loadAudit();
   if (S.tab === 'ajustes') await loadUsers();
   recompute();
@@ -145,7 +145,7 @@ document.addEventListener('keydown', (ev) => {
 async function run(fn, okMsg) {
   try { const r = await fn(); await reload(); if (okMsg) toast(okMsg); return r; } catch (e) { toast(e.message); return null; }
 }
-const COLL = { car: 'cars', expense: 'expenses', planned: 'planned', receipt: 'receipts', payment: 'payments', repasse: 'repasses', loan: 'loans', payable: 'payables' };
+const COLL = { car: 'cars', expense: 'expenses', planned: 'planned', receipt: 'receipts', payment: 'payments', repasse: 'repasses', loan: 'loans', payable: 'payables', pdebt: 'partnerDebts' };
 const del = (kind, it, restore) => run(
   () => (restore ? api('POST', `/api/${COLL[kind]}/${it.id}/restore`) : api('DELETE', `/api/${COLL[kind]}/${it.id}`)),
   restore ? 'Restaurado.' : 'Excluído. Dá para restaurar pelo Histórico.');
@@ -255,6 +255,11 @@ document.addEventListener('click', async (ev) => {
     case 'sell-car': it = itemOf('car', id); openForm('car', it, { vender: true, heading: `Vender ${it.name}` }); break;
     case 'car-gastos': S.ui.gcar = String(id); go('gastos'); break;
     case 'cg-f': S.ui.cgf = id; views.consignados.paint(); break;
+    case 'so-f': S.ui.sof = id; views.socios.paint(); break;
+    case 'so-per': S.ui.sper = id; views.socios.paint(); break;
+    case 'pd-new': openForm('pdebt', null, { prefill: { tipo: b.dataset.tipo || 'Dívida', devedor: b.dataset.dev || '' }, heading: b.dataset.tipo === 'Abatimento' ? 'Abater dívida entre sócios' : 'Nova dívida entre sócios' }); break;
+    case 'pd-edit': openForm('pdebt', itemOf('pdebt', id), { heading: 'Editar dívida entre sócios' }); break;
+    case 'pd-del': it = itemOf('pdebt', id); confirmBox(`Excluir ${it.tipo === 'Abatimento' ? 'o abatimento' : 'a dívida'} de ${brl(Calc.num(it.valor))}? Dá para restaurar pelo Histórico.`, () => del('pdebt', it), 'Excluir'); break;
     case 'doc-transf': // carro vendido: confirma antes de marcar como transferido para o comprador
       it = itemOf('car', id);
       confirmBox(`Confirmar que o ${it.name}${it.placa ? ' (' + it.placa + ')' : ''} já foi transferido para o comprador${it.comprador ? ', ' + it.comprador : ''}?`,

@@ -348,3 +348,15 @@ test('documento do carro: transferido grava a data, voltar apaga; documentação
   assert.equal((await adm('PATCH', `/api/cars/${c.id}`, { docNome: 'Nosso nome' })).json.item.docTransf, null);
   assert.equal((await adm('PATCH', `/api/cars/${c.id}`, { docPend: 0, docObs: null })).json.item.docPend, 0);
 });
+
+test('dívida entre sócios: cadastro, abatimento num carro e validação', async () => {
+  const adm = client();
+  await adm('POST', '/api/login', { username: 'brayan', password: 'senha-do-brayan' });
+  const car = (await adm('POST', '/api/cars', { name: 'Abate', entT: 40000 })).json.item;
+  assert.equal((await adm('POST', '/api/partnerDebts', { date: '2026-11-01', tipo: 'Dívida', devedor: 'B', valor: 9000 })).status, 201);
+  const ab = await adm('POST', '/api/partnerDebts', { date: '2026-11-10', tipo: 'Abatimento', devedor: 'B', valor: 3000, carId: car.id });
+  assert.equal(ab.status, 201); assert.equal(ab.json.item.carId, car.id);
+  assert.equal((await adm('POST', '/api/partnerDebts', { date: '2026-11-10', tipo: 'Dívida', devedor: 'B', valor: 0 })).status, 400);
+  assert.equal((await adm('POST', '/api/partnerDebts', { date: '2026-11-10', tipo: 'Outro', devedor: 'B', valor: 10 })).status, 400);
+  assert.equal((await adm('GET', '/api/data')).json.partnerDebts.length >= 2, true);
+});
