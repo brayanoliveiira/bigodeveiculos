@@ -10,7 +10,7 @@ export const S = {
   loaded: false, auditLoaded: false,
   tab: 'resumo',
   year: new Date().getFullYear(),
-  ui: { q: '', st: 'Todos', gcar: '', gquem: '', pcar: '', pst: '', hu: '', he: '', open: {}, vf: 'Todas', rep: 'geral', per: 'ano', from: '', to: '', rcCar: null, repCar: null, byMarca: (() => { try { return !!localStorage.getItem('bc.byMarca'); } catch { return false; } })() },
+  ui: { q: '', st: 'Todos', gcar: '', gquem: '', pcar: '', pst: '', hu: '', he: '', open: {}, vf: 'Todas', rep: 'resumo', per: 'mes', from: '', to: '', rcCar: null, repCar: null, byMarca: (() => { try { return !!localStorage.getItem('bc.byMarca'); } catch { return false; } })() },
   D: {},
   loanHold: {},
   DV: { porLoan: {}, porCar: {}, total: 0, A: 0, B: 0, atrasado: 0, jurosMes: 0 },

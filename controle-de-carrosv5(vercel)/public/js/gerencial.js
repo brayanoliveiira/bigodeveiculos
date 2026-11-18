@@ -68,6 +68,77 @@ function groupedChart(rows, series, aria) {
 /* ---------- relatórios ---------- */
 const R = {};
 
+/* ---------- Fechamento: o resumo de tudo, geral e por sócio, numa página só ---------- */
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+function tituloPeriodo() {
+  const t = today();
+  if (S.ui.per === 'mes') { const m = MESES[+t.slice(5, 7) - 1]; return `${m[0].toUpperCase()}${m.slice(1)} de ${t.slice(0, 4)}`; }
+  if (S.ui.per === 'ano') return `Ano de ${t.slice(0, 4)}`;
+  if (S.ui.per === 'ano-passado') return `Ano de ${+t.slice(0, 4) - 1}`;
+  if (S.ui.per === 'tudo') return 'Desde o começo';
+  return perText()[0].toUpperCase() + perText().slice(1);
+}
+/** Valor com sinal para a tabela por sócio: positivo é a favor do sócio. */
+const vs = (v, forte) => { const r = Math.round(v * 100) / 100; const t = `<span class="${r < 0 ? 'neg' : ''}">${Math.abs(r) < 0.005 ? '—' : brl(r).replace(/R\$\s?/, '<span class="cur">R$ </span>')}</span>`; return forte ? `<b>${t}</b>` : t; };
+
+R.resumo = (D) => {
+  const p = per(), J = jurosDe(p), juros = J ? J.total : 0;
+  const vend = Reports.ranking(D, p.from, p.to).rows;
+  const fat = vend.reduce((a, x) => a + x.vvenda, 0), custo = vend.reduce((a, x) => a + x.custo, 0), lucro = vend.reduce((a, x) => a + x.lucro, 0), liq = lucro - juros;
+  const soc = Reports.porSocio(D, S.expenses, p.from, p.to, J), est = Reports.estoque(D, S.settings), rec = Reports.recebiveis(D, today());
+  const sm = Calc.summary(D, S.expenses, S.planned, S.settings, today(), S.year, Calc.jurosPagos(S.payables, S.loans));
+  const carros = sm.acerto[0].saldo, divida = Calc.dividaSocios(S.pdebts).saldo, entre = Math.round((carros + divida) * 100) / 100; // > 0: Marcos (B) deve a Brayan (A)
+  const prej = vend.filter((x) => x.lucro < 0);
+
+  // 1. a conta do período: vendido − custo − juros = lucro líquido
+  let h = `<section class="fech"><h2 class="fech-t">${esc(tituloPeriodo())}</h2>`;
+  if (vend.length) {
+    const termo = (v, l, go, cls) => `<button type="button" class="fx-t ${cls || ''}" ${go}><span class="fx-v">${brl(v)}</span><span class="fx-l">${l}</span></button>`;
+    h += `<p class="fech-s">${vend.length === 1 ? 'Vendemos 1 carro' : `Vendemos ${vend.length} carros`}${prej.length ? `, ${prej.length === 1 ? '1 deu prejuízo' : `${prej.length} deram prejuízo`}` : ''}.</p>` +
+      `<div class="fx">${termo(fat, 'vendido', 'data-act="ger-go" data-id="ranking"')}<span class="fx-o">−</span>${termo(custo, 'custo dos carros', 'data-act="ger-go" data-id="ranking"')}` +
+      (juros ? `<span class="fx-o">−</span>${termo(juros, 'juros de empréstimos', 'data-go="emprestimos"')}` : '') +
+      `<span class="fx-o">=</span>${termo(liq, 'lucro líquido', 'data-act="ger-go" data-id="lucro"', liq < 0 ? 'neg res' : 'res')}</div>`;
+  } else h += `<p class="fech-s">Nenhum carro vendido neste período. Escolha outro período acima para ver os resultados.</p>`;
+  h += '</section>';
+
+  // 2. por sócio: o período, o dinheiro de hoje e o acerto entre os dois
+  const A = soc.A, B = soc.B;
+  const linha = (rot, a, b, t, go, forte, nota) => `<tr${go ? ` class="go" ${go} tabindex="0" role="button"` : ''}><th scope="row">${rot}${nota ? `<span class="mut small">${nota}</span>` : ''}</th><td>${vs(a, forte)}</td><td>${vs(b, forte)}</td><td>${vs(t, forte)}</td></tr>`;
+  const grupo = (t) => `<tr class="grp-r"><th colspan="4" scope="rowgroup">${t}</th></tr>`;
+  const quem = Math.abs(entre) < 0.005 ? 'Vocês estão quites: ninguém deve nada a ninguém.' : entre > 0 ? `Para zerar tudo, ${esc(nm('B'))} passa ${brl(entre)} para ${esc(nm('A'))}.` : `Para zerar tudo, ${esc(nm('A'))} passa ${brl(-entre)} para ${esc(nm('B'))}.`;
+  h += `<section class="panel"><h2>Por sócio</h2><div class="tbl"><table class="soc-t"><thead><tr><th></th><th scope="col">${esc(nm('A'))}</th><th scope="col">${esc(nm('B'))}</th><th scope="col">Total</th></tr></thead><tbody>` +
+    grupo('No período') +
+    (juros ? linha('Lucro das vendas', A.vendidos.luc, B.vendidos.luc, lucro, 'data-act="ger-go" data-id="ranking"') : '') +
+    (juros ? linha('Juros de empréstimos', -A.vendidos.juros, -B.vendidos.juros, -juros, 'data-go="emprestimos"') : '') +
+    linha('Lucro líquido', A.vendidos.lucLiq, B.vendidos.lucLiq, liq, 'data-act="ger-go" data-id="lucro"', true) +
+    linha('Gastos pagos', A.gastoPeriodo, B.gastoPeriodo, A.gastoPeriodo + B.gastoPeriodo, 'data-go="gastos"', false, 'voltam para quem pagou quando o carro vende') +
+    grupo('Hoje') +
+    linha('Investido nos carros do pátio', A.estoque.inv, B.estoque.inv, A.estoque.inv + B.estoque.inv, 'data-act="ger-go" data-id="resumo" data-f="pat"', false, `${est.rows.length} ${est.rows.length === 1 ? 'carro' : 'carros'}`) +
+    linha('A receber de clientes', rec.A, rec.B, rec.A + rec.B, 'data-go="vendas"') +
+    linha('A pagar', -S.DV.A, -S.DV.B, -S.DV.total, 'data-act="rs-apagar"', false, 'veículos, empréstimos e cartão') +
+    grupo('Entre vocês: positivo tem a receber, negativo tem a pagar') +
+    linha('Acerto dos carros vendidos', carros, -carros, 0, 'data-go="socios" data-ui="sof=divida"', false, 'quem ficou com o dinheiro das vendas') +
+    linha('Dívida entre sócios', divida, -divida, 0, 'data-go="socios" data-ui="sof=divida"') +
+    `</tbody></table></div><p class="soc-fim">${quem}</p></section>`;
+
+  // 3. os carros: vendidos no período, os que deram prejuízo e os que estão no pátio
+  const f = ['vend', 'prej', 'pat'].includes(S.ui.rkf) ? S.ui.rkf : 'vend';
+  const abas = [['vend', `Vendidos (${vend.length})`], ['prej', `Com prejuízo (${prej.length})`], ['pat', `No pátio (${est.rows.length})`]];
+  h += `<section class="panel"><div class="rep-h"><h2>Carros</h2><div class="chips">${abas.map(([k, l]) => `<button class="chip" data-act="rk-f" data-id="${k}" aria-pressed="${f === k}">${l}</button>`).join('')}</div></div>`;
+  if (f === 'pat') {
+    h += table([{ label: 'Carro', get: (r) => carLink(r, `<div class="mut small">${esc(r.status)}${r.dias != null ? `, há ${r.dias} dias` : ''}</div>`) }, { label: 'Custo até agora', r: true, get: (r) => brl(r.custo) },
+      { label: nm('A'), r: true, get: (r) => brl(r.invA) }, { label: nm('B'), r: true, get: (r) => brl(r.invB) }, { label: 'Anúncio', r: true, get: (r) => (r.anun ? brl(r.anun) : '—') }, { label: 'Lucro previsto', r: true, get: (r) => (r.proj == null ? '—' : val(r.proj)) }],
+    est.rows, null, 'Nenhum carro no pátio.');
+  } else {
+    const lista = f === 'prej' ? prej.slice().sort((a, b) => a.lucro - b.lucro) : vend;
+    h += table([{ label: 'Carro', get: (x) => carLink(x, `<div class="mut small">vendido em ${dmy(x.dvenda)}</div>`) }, { label: 'Custo', r: true, get: (x) => brl(x.custo) }, { label: 'Venda', r: true, get: (x) => brl(x.vvenda) },
+      { label: 'Lucro', r: true, get: (x) => val(x.lucro) }, { label: nm('A'), r: true, get: (x) => val(x.lucA) }, { label: nm('B'), r: true, get: (x) => val(x.lucB) }],
+    lista, null, f === 'prej' ? 'Nenhum carro deu prejuízo neste período.' : 'Nenhum carro vendido neste período.');
+  }
+  h += '</section>';
+  return { html: `<div class="stack">${h}</div>` };
+};
+
 R.geral = (D) => {
   const p = per(), J = jurosDe(p), v = Reports.visaoGeral(D, S.expenses, today(), S.settings, p.from, p.to, J);
   const soc = Reports.porSocio(D, S.expenses, p.from, p.to, J), lm = Reports.lucroMensal(D, p.from, p.to, J);
@@ -257,11 +328,15 @@ views.gerencial = {
   paint() {
     const box = $('#rep');
     if (!box) return;
-    $('#repchips').innerHTML = REPORTS.map(([k, l]) => `<button class="chip" data-rep="${k}" aria-pressed="${S.ui.rep === k}">${l}</button>`).join('');
+    // o fechamento é a tela principal; os relatórios completos ficam num seletor
+    const det = S.ui.rep !== 'resumo' && R[S.ui.rep];
+    $('#repchips').innerHTML = (det ? '<button class="btn sm" data-rep="resumo">‹ Voltar ao fechamento</button>' : '') +
+      `<select id="repmore" aria-label="Relatórios detalhados"><option value="">${det ? 'Trocar de relatório' : 'Relatórios detalhados'}</option>${REPORTS.map(([k, l]) => `<option value="${k}"${S.ui.rep === k ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+    $('#repmore').onchange = function () { if (this.value) { S.ui.rep = this.value; S.ui.rkf = ''; views.gerencial.paint(); } };
     if (!Object.keys(S.D).length) { box.innerHTML = '<div class="empty"><h3>Sem dados ainda</h3><p class="mut" style="margin:0">Cadastre carros, gastos e vendas para ver os relatórios.</p></div>'; return; }
     for (const k of Object.keys(csvReg)) delete csvReg[k];
     csvSeq = 0;
-    const out = (R[S.ui.rep] || R.geral)(S.D);
+    const out = (R[S.ui.rep] || R.resumo)(S.D);
     box.innerHTML = out.html;
   },
 };

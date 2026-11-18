@@ -330,3 +330,33 @@ svg.chart .ba{fill:var(--pa)} svg.chart .bb{fill:var(--pb)} svg.chart .bd{fill:c
   body{background:#fff;padding:0} .bar,.tabs,.top,.toolbar,.per,.no-print,.btn,.toast,#banner{display:none !important}
   .panel,.kpi,.tbl{break-inside:avoid;border-color:#bbb} .wrap{max-width:none}
 }
+
+/* ---------- Gerencial: fechamento ---------- */
+/* A conta do período (vendido − custo − juros = lucro) é o único destaque; o resto é tabela quieta. */
+.fech{padding:6px 0 4px}
+.fech-t{margin:0;font-size:clamp(24px,3.2vw,30px);font-weight:600;letter-spacing:-.02em}
+.fech-s{margin:4px 0 14px;color:var(--ink2)}
+.fx{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 14px}
+.fx-t{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:2px;border-bottom:1px solid transparent;padding-bottom:2px}
+.fx-t:hover,.fx-t:focus-visible{border-bottom-color:var(--brass)}
+.fx-t:focus-visible{outline:2px solid var(--brass);outline-offset:3px}
+.fx-v{font-size:clamp(20px,2.6vw,26px);font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fx-l{font-size:13px;color:var(--ink2)}
+.fx-o{font-size:24px;color:var(--ink3);padding-bottom:20px}
+.fx-t.res .fx-v{color:var(--brass-ink);font-size:clamp(28px,3.6vw,36px)}
+.fx-t.neg .fx-v{color:#FF8A7E}
+.soc-t{width:100%;min-width:0;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.soc-t th,.soc-t td{border-bottom:0}
+.soc-t thead th{color:var(--ink)}
+.soc-t thead th{text-align:right;font-weight:600;font-size:14px;padding:6px 10px;border-bottom:1px solid var(--line)}
+.soc-t th[scope=row]{text-align:left;font-weight:400;padding:9px 10px}
+.soc-t th[scope=row] .small{display:block;margin-top:1px}
+.soc-t td{text-align:right;padding:9px 10px;white-space:nowrap}
+.soc-t tbody tr:not(.grp-r){border-bottom:1px solid var(--line)}
+.soc-t .grp-r th{text-align:left;font-size:13px;font-weight:600;color:var(--brass-ink);padding:16px 10px 4px}
+.soc-t tr.go{cursor:pointer}
+.soc-t tr.go:hover,.soc-t tr.go:focus-visible{background:var(--surface2)}
+.soc-t tr.go:focus-visible{outline:2px solid var(--brass);outline-offset:-2px}
+.soc-t td:last-child{color:var(--ink2)}
+.soc-fim{margin:14px 0 0;font-size:16px;font-weight:600}
+@media (max-width:560px){.soc-t{table-layout:fixed}.soc-t thead th:first-child{width:36%}.soc-t th[scope=row]{padding:8px 6px;white-space:normal;font-size:13px}.soc-t td{padding:8px 4px;font-size:12px;text-align:right;letter-spacing:-.02em}.soc-t th[scope=row] .small{font-size:11.5px}.panel:has(.soc-t){padding:14px 10px}.soc-t .cur{display:none}.soc-t td{font-size:13px}.soc-t td:last-child,.soc-t thead th:last-child{display:none}.soc-t .grp-r th{white-space:normal}.fx-o{padding-bottom:22px}}
