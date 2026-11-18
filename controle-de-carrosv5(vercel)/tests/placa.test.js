@@ -124,6 +124,7 @@ test('site zapcarconsulta: salvar carro com placa preenche FIPE e referência', 
     fetch: async (url) => { seen.push(String(url));
       if (String(url).endsWith('=ZZZ9Z99')) return { ok: false, status: 503, json: async () => null };
       if (String(url).endsWith('=AAA0A00')) return { ok: false, status: 404, json: async () => ({ erro: 'Nenhum veículo foi encontrado para a placa AAA0A00' }) };
+      if (String(url).endsWith('=JKG9333')) return { ok: false, status: 404, json: async () => { throw new Error('html'); } }; // endereço do site saiu do ar
       return { ok: true, status: 200, json: async () => json }; } });
   const b5 = `http://127.0.0.1:${(await a5.listen()).port}`;
   const r = await fetch(b5 + '/api/login', { method: 'POST', headers: H, body: JSON.stringify({ username: 'x1234', password: 'senha-12345' }) });
@@ -141,6 +142,9 @@ test('site zapcarconsulta: salvar carro com placa preenche FIPE e referência', 
     const j2 = await c2.json();
     assert.equal(j2.item.fipe, null); assert.equal(j2.fipeAuto.ok, false);
   }
+  // o site tirou o endereço do ar (404 em HTML): aviso claro, não "placa não encontrada"
+  const sai = await fetch(b5 + '/api/placa/JKG9333', { headers: { ...H, cookie: ck } });
+  assert.equal(sai.status, 502); assert.match((await sai.json()).error, /mudou e parou de responder/);
   // editar a placa (o formulário manda fipe vazio quando a consulta não trouxe nada): consulta a placa nova
   const ids = (await (await fetch(b5 + '/api/data', { headers: { ...H, cookie: ck } })).json()).cars.filter((x) => x.placa === 'ZZZ9Z99').map((x) => x.id);
   const e = await fetch(b5 + `/api/cars/${ids[0]}`, { method: 'PATCH', headers: { ...H, cookie: ck }, body: JSON.stringify({ placa: 'SSK3E54', fipe: null, fipeRef: null }) });

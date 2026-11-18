@@ -165,6 +165,8 @@ async function lookup({ db, cfg, user, placa: rawPlaca, fresh }) {
   const msg = body && (body.mensagemRetorno || body.message || body.erro);
   const data = body && res.ok ? (body.__site ? parseSite(body.j, placa) : body.__apib ? normalizeApiBrasil(body.dados, body.fipe, placa) : normalize(body, placa)) : null;
   if (!data) {
+    // 404 sem JSON: o endereço de consulta do site deixou de existir (o site mudou), não é a placa que não existe.
+    if (site && res && res.status === 404 && !body) throw new HttpError(502, 'A consulta grátis de placa (zapcarconsulta) mudou e parou de responder. Para voltar a consultar, cadastre APIBRASIL_BEARER e APIBRASIL_DEVICE_TOKEN (plano grátis, 100 por dia; veja docs/OPERACAO.md). Enquanto isso, use "Buscar valor na tabela FIPE" (marca > modelo > ano).');
     if (site) throw new HttpError(res && !res.ok ? 502 : 404, res && !res.ok ? `O site de consulta respondeu HTTP ${res.status}. Use "Buscar valor na tabela FIPE" (marca > modelo > ano) ou tente de novo.` : 'O site não achou essa placa. Confira a placa ou use "Buscar valor na tabela FIPE".');
     if (gratis) throw new HttpError(404, `O serviço gratuito não achou essa placa (resposta HTTP ${res && res.status}${msg ? ': ' + String(msg).slice(0, 80) : ''}). Use "Buscar valor na tabela FIPE" (marca > modelo > ano).`);
     if (res && (res.status === 401 || res.status === 403)) throw new HttpError(502, apib ? 'A APIBrasil recusou os tokens. Confira APIBRASIL_BEARER e APIBRASIL_DEVICE_TOKEN.' : 'O serviço recusou o token (inválido ou sem saldo). Confira PLACA_API_TOKEN.');

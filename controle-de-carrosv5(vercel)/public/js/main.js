@@ -259,6 +259,7 @@ document.addEventListener('click', async (ev) => {
     case 'cg-f': S.ui.cgf = id; views.consignados.paint(); break;
     case 'so-f': S.ui.sof = id; views.socios.paint(); break;
     case 'so-per': S.ui.sper = id; views.socios.paint(); break;
+    case 'cg-dono': S.ui.cgdono = b.dataset.id || ''; if (S.ui.cgf === 'Por dono') S.ui.cgf = 'Todos'; views.consignados.paint(); break;
     case 'pd-new': openForm('pdebt', null, { prefill: { tipo: b.dataset.tipo || 'Dívida', devedor: b.dataset.dev || '', como: b.dataset.como || '' }, heading: b.dataset.tipo === 'Abatimento' ? 'Abater dívida entre sócios' : 'Nova dívida entre sócios' }); break;
     case 'pd-edit': openForm('pdebt', itemOf('pdebt', id), { heading: 'Editar dívida entre sócios' }); break;
     case 'pd-del': it = itemOf('pdebt', id); confirmBox(`Excluir ${it.tipo === 'Abatimento' ? 'o abatimento' : 'a dívida'} de ${brl(Calc.num(it.valor))}? Dá para restaurar pelo Histórico.`, () => del('pdebt', it), 'Excluir'); break;

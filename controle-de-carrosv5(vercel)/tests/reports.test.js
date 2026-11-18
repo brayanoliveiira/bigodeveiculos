@@ -162,3 +162,21 @@ test('juros de empréstimos nos relatórios: lucro por mês, por sócio e visão
   assert.equal(s.A.saldo - R.porSocio(D, [], '', '').A.saldo, 3000 - 1500);
   assert.equal(R.visaoGeral(D, [], '2026-12-01', { meta: 0.1, alerta: 45 }, '', '', J).lucroLiq, 7000);
 });
+
+test('consignados por dono: quanto cada dono recebeu e ganhou', () => {
+  const cs = [
+    { id: 1, name: 'Civic', dono: 'Felipe', donoSocio: 1, entT: 32000, repasse: 23000, status: 'Vendido', vvenda: 42000, dvenda: HOJE },
+    { id: 2, name: 'Uno', dono: 'felipe ', repasse: 15000, status: 'Vendido', vvenda: 18000, dvenda: HOJE },
+    { id: 3, name: 'Palio', dono: 'Ana', repasse: 12000, anun: 15000, status: 'Em estoque' },
+  ];
+  const D = C.compute(cs, [{ id: 1, carId: 2, valor: 1000, quem: 'A' }], [], SET, HOJE);
+  const r = R.consignados(D, HOJE), fe = r.porDono.find((o) => o.dono === 'Felipe');
+  assert.equal(r.porDono.length, 2, 'mesmo dono com espaço/maiúscula diferente conta junto');
+  assert.equal(fe.n, 2); assert.equal(fe.vendidos, 2);
+  near(fe.recebe, 30187.5 + 15000, 'recebe: 30.187,50 do Civic + 15.000 do Uno');
+  near(fe.lucro, 7187.5, 'lucro só no carro em que é sócio');
+  const uno = r.rows.find((x) => x.car === 'Uno');
+  near(uno.comissao, 2000, 'nossa comissão: 18.000 − 15.000 − 1.000 de gastos'); near(D[2].retA, 1000 + 1000, 'gasto volta para quem pagou');
+  const ana = r.porDono.find((o) => o.dono === 'Ana'); near(ana.emEstoque, 12000, 'parte da Ana em estoque');
+  near(r.total.donoRecebe, 45187.5, 'total recebido pelos donos');
+});

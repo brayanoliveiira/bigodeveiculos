@@ -183,14 +183,27 @@ var Reports = (function () {
     var rows = list(D).filter(function (d) { return d.consig && !d.entregue; }).map(function (d) {
       return { carId: d.c.id, car: d.c.name, placa: d.c.placa || '', dono: d.c.dono, status: d.c.status, dvenda: d.c.dvenda || '', vvenda: N0(d.c.vvenda),
         repasse: d.repasse, repassado: d.repPago + d.emEspecie, falta: d.repFalta, gastos: d.gast, comissao: d.lucro, comA: d.lucA, comB: d.lucB, vendido: d.vendido,
-        minimo: d.pmin, anun: N0(d.c.anun), proj: d.proj, recebido: d.recebido, aReceber: d.aReceber };
+        minimo: d.pmin, anun: N0(d.c.anun), proj: d.proj, recebido: d.recebido, aReceber: d.aReceber,
+        // o dono: parte dele no carro (repasse combinado), quanto recebe na venda e quanto ganhou (lucro, no dono sócio)
+        socio: !!d.socio, donoParte: d.repDono != null ? d.repDono : d.repasse, donoRecebe: d.vendido ? d.repasse : null,
+        donoLucro: d.vendido ? (d.lucDono || 0) : null, donoLucroPrev: !d.vendido && d.socio ? d.lucDono : null, dcompra: d.c.dcompra || '' };
     }).sort(function (a, b) { return (a.vendido ? 1 : 0) - (b.vendido ? 1 : 0) || String(b.dvenda).localeCompare(String(a.dvenda)); });
     var sold = rows.filter(function (r) { return r.vendido && r.comissao !== null; });
+    // por dono: quantos carros, quanto recebeu / vai receber e quanto ganhou
+    var by = {};
+    rows.forEach(function (r) {
+      var k = String(r.dono || '').trim(), key = k.toLowerCase();
+      var o = by[key] || (by[key] = { dono: k, n: 0, vendidos: 0, estoque: 0, emEstoque: 0, recebe: 0, lucro: 0, lucroPrev: 0, repassado: 0, falta: 0, carros: [] });
+      o.n++; o.carros.push(r.car); o.repassado += r.repassado;
+      if (r.vendido) { o.vendidos++; o.recebe += N0(r.donoRecebe); o.lucro += N0(r.donoLucro); o.falta += r.falta; }
+      else { o.estoque++; o.emEstoque += N0(r.donoParte); o.lucroPrev += N0(r.donoLucroPrev); }
+    });
+    var porDono = Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return b.recebe - a.recebe || a.dono.localeCompare(b.dono); });
     return {
-      rows: rows,
+      rows: rows, porDono: porDono,
       total: { n: rows.length, vendidos: sold.length, repasse: sumBy(sold, function (r) { return r.repasse; }), repassado: sumBy(rows, function (r) { return r.repassado; }),
         falta: sumBy(sold, function (r) { return r.falta; }), comissao: sumBy(sold, function (r) { return r.comissao; }), comA: sumBy(sold, function (r) { return r.comA; }), comB: sumBy(sold, function (r) { return r.comB; }),
-        gastos: sumBy(sold, function (r) { return r.gastos; }) },
+        gastos: sumBy(sold, function (r) { return r.gastos; }), donoRecebe: sumBy(sold, function (r) { return N0(r.donoRecebe); }), donoLucro: sumBy(sold, function (r) { return N0(r.donoLucro); }) },
     };
   }
 

@@ -174,16 +174,26 @@ R.consig = (D) => {
   const cols = [
     { label: 'Carro', get: (r) => `<b>${esc(r.car)}</b><div class="mut small">${esc(r.placa)} · dono: ${esc(r.dono)}</div>` },
     { label: 'Status', get: (r) => esc(r.status) },
-    { label: 'Repasse', r: true, get: (r) => brl(r.repasse) },
+    { label: 'Dono recebe', r: true, get: (r) => (r.vendido ? `${brl(r.donoRecebe)}${r.donoLucro ? `<div class="small ${r.donoLucro < 0 ? 'neg' : 'pos'}">${brl(r.donoLucro)} de lucro</div>` : ''}` : `<span class="mut">${brl(r.donoParte)} fixo${r.donoLucroPrev ? ` + ${brl(r.donoLucroPrev)} projetado` : ''}</span>`) },
     { label: 'Repassado', r: true, get: (r) => brl(r.repassado) },
-    { label: 'Falta', r: true, get: (r) => (r.vendido ? (r.falta > 0.004 ? `<span class="neg">${brl(r.falta)}</span>` : '—') : '<span class="mut">após vender</span>') },
+    { label: 'Falta', r: true, get: (r) => (r.vendido ? (r.falta > 0.004 ? `<span class="neg">${brl(r.falta)}</span>` : '—') : `<span class="mut">${brl(r.donoParte + (r.proj != null ? (r.donoLucroPrev || 0) : 0))} previsto</span>`) },
     { label: 'Venda', r: true, get: (r) => (r.vendido ? brl(r.vvenda) : (r.anun ? `<span class="mut">anúncio ${brl(r.anun)}</span>` : '—')) },
     { label: 'Gastos', r: true, get: (r) => brl(r.gastos) },
     { label: 'Comissão', r: true, get: (r) => (r.vendido ? val(r.comissao) : (r.proj != null ? `<span class="mut">proj. ${brl(r.proj)}</span>` : '—')) },
   ];
-  const foot = { Carro: 'Total (vendidos)', Repasse: brl(t.repasse), Repassado: brl(t.repassado), Falta: brl(t.falta), Gastos: brl(t.gastos), Comissão: brl(t.comissao) };
+  const dc = [
+    { label: 'Dono', get: (o) => `<b>${esc(o.dono)}</b><div class="mut small">${esc(o.carros.join(', '))}</div>` },
+    { label: 'Carros', r: true, get: (o) => `${o.n} (${o.vendidos} ${o.vendidos === 1 ? 'vendido' : 'vendidos'})` },
+    { label: 'Recebe nas vendas', r: true, get: (o) => brl(o.recebe) },
+    { label: 'Lucro dele', r: true, get: (o) => val(o.lucro) },
+    { label: 'Falta repassar', r: true, get: (o) => (o.falta > 0.004 ? `<span class="neg">${brl(o.falta)}</span>` : '—') },
+    { label: 'Em estoque', r: true, get: (o) => (o.estoque ? brl(o.emEstoque) : '—') },
+  ];
+  h += panel('Por dono: quanto cada um recebe e ganha', table(dc, c.porDono, null, 'Nenhum dono.'),
+    { name: 'consignados-por-dono', cols: [{ k: 'dono', label: 'Dono' }, { k: 'n', label: 'Carros' }, { k: 'vendidos', label: 'Vendidos' }, { k: 'recebe', label: 'Recebeu' }, { k: 'lucro', label: 'Lucro do dono' }, { k: 'falta', label: 'Falta repassar' }, { k: 'emEstoque', label: 'Em estoque (parte do dono)' }], rows: c.porDono });
+  const foot = { Carro: 'Total (vendidos)', 'Dono recebe': brl(t.donoRecebe), Repassado: brl(t.repassado), Falta: brl(t.falta), Gastos: brl(t.gastos), Comissão: brl(t.comissao) };
   h += panel('Carros consignados', table(cols, c.rows, c.rows.length ? foot : null, 'Nenhum carro consignado. Ao cadastrar um carro, preencha "Dono do carro" para marcá-lo como consignado.'),
-    { name: 'consignados', cols: [{ k: 'car', label: 'Carro' }, { k: 'placa', label: 'Placa' }, { k: 'dono', label: 'Dono' }, { k: 'status', label: 'Status' }, { k: 'repasse', label: 'Repasse' }, { k: 'repassado', label: 'Repassado' }, { k: 'falta', label: 'Falta repassar' }, { k: 'vvenda', label: 'Venda' }, { k: 'gastos', label: 'Gastos' }, { k: 'comissao', label: 'Comissão' }, { k: 'comA', label: `Comissão ${nm('A')}` }, { k: 'comB', label: `Comissão ${nm('B')}` }], rows: c.rows });
+    { name: 'consignados', cols: [{ k: 'car', label: 'Carro' }, { k: 'placa', label: 'Placa' }, { k: 'dono', label: 'Dono' }, { k: 'status', label: 'Status' }, { k: 'repasse', label: 'Repasse' }, { k: 'donoLucro', label: 'Lucro do dono' }, { k: 'repassado', label: 'Repassado' }, { k: 'falta', label: 'Falta repassar' }, { k: 'vvenda', label: 'Venda' }, { k: 'gastos', label: 'Gastos' }, { k: 'comissao', label: 'Comissão' }, { k: 'comA', label: `Comissão ${nm('A')}` }, { k: 'comB', label: `Comissão ${nm('B')}` }], rows: c.rows });
   return { html: `<div class="stack">${h}</div>` };
 };
 

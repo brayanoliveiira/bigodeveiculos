@@ -62,7 +62,15 @@ function retornoHtml(d) {
   const quem = a > 0 ? `${nm('B')} passa ${brl(a)} para ${nm('A')}` : `${nm('A')} passa ${brl(-a)} para ${nm('B')}`;
   const acerto = Math.abs(a) < 0.01 ? (falta ? 'Quando tudo entrar, cada um fica com a sua parte.' : 'Cada um já ficou com a sua parte.')
     : `Para fechar este carro: ${quem}${falta ? ', contando o que ainda vai entrar' : ''}.`;
-  return `<div class="ret"><div class="ret-h">Da venda, cada um recebe</div>${linha('A')}${linha('B')}<p class="ret-a">${esc(acerto)}</p></div>`;
+  // consignado: o dono primeiro (repasse; no dono sócio, a parte dele + o lucro dele)
+  let dono = '';
+  if (d.consig) {
+    const partes = d.socio ? [[d.repDono, 'da parte dele'], [d.lucDono, 'de lucro']].filter(([v]) => Math.abs(v) > 0.004)
+      .map(([v, txt], i) => `${i ? (v < 0 ? '− ' : '+ ') : ''}<span class="${v < 0 ? 'neg' : ''}">${brl(Math.abs(v))}</span> ${txt}`) : ['repasse combinado'];
+    const st = d.repFalta > 0.004 ? `, falta repassar ${brl(d.repFalta)}` : ', já repassado';
+    dono = `<div class="ret-p"><div class="ret-n"><span>${esc(d.c.dono)} (dono)</span><b class="num">${brl(d.repasse)}</b></div><div class="ret-c">${partes.join(' ')}${esc(st)}</div></div>`;
+  }
+  return `<div class="ret"><div class="ret-h">Da venda, cada um recebe</div>${dono}${linha('A')}${linha('B')}<p class="ret-a">${esc(acerto)}</p></div>`;
 }
 
 function carCard(d) {
@@ -294,7 +302,7 @@ views.consignados = {
     const box = $('#list');
     if (!box) return;
     const f = S.ui.cgf || 'Todos';
-    $('#cgchips').innerHTML = ['Todos', 'Em estoque', 'Vendidos', 'A repassar'].map((x) => `<button class="chip" data-act="cg-f" data-id="${x}" aria-pressed="${f === x}">${x}</button>`).join('');
+    $('#cgchips').innerHTML = ['Todos', 'Em estoque', 'Vendidos', 'A repassar', 'Por dono'].map((x) => `<button class="chip" data-act="cg-f" data-id="${x}" aria-pressed="${f === x}">${x}</button>`).join('');
     const c = Reports.consignados(S.D, today()), t = c.total;
     if (!c.rows.length) {
       box.innerHTML = empty('Nenhum carro consignado', 'Carro de terceiro que vocês vendem: no cadastro, preencha "Dono do carro" e o repasse combinado. Ele aparece aqui com a comissão e o que falta repassar.', 'Cadastrar carro', 'new-car');
@@ -305,9 +313,21 @@ views.consignados = {
     let h = '<dl class="grid kpis" style="margin:0">' +
       K('Em estoque', `${est.length} ${est.length === 1 ? 'carro' : 'carros'}`, '', true, est.length ? `comissão prevista de ${brl(proj)}` : '') +
       K('Comissão realizada', money(t.comissao), t.comissao < 0 ? 'neg' : '', false, `${t.vendidos} ${t.vendidos === 1 ? 'vendido' : 'vendidos'}, ${esc(nm('A'))} ${brl(t.comA)} e ${esc(nm('B'))} ${brl(t.comB)}`) +
-      K('A repassar aos donos', money(t.falta), t.falta > 0.004 ? 'neg' : '', false, t.falta > 0.004 ? 'de carros já vendidos' : 'tudo repassado') +
-      K('Já repassado', money(t.repassado)) + '</dl>';
-    const rows = c.rows.filter((r) => f === 'Todos' || (f === 'Em estoque' && !r.vendido) || (f === 'Vendidos' && r.vendido) || (f === 'A repassar' && r.vendido && r.falta > 0.004));
+      K('A repassar aos donos', money(t.falta), t.falta > 0.004 ? 'neg' : '', false, (t.falta > 0.004 ? 'de carros já vendidos' : 'nada de carros vendidos') + (est.length ? `, mais ${brl(est.reduce((a, r) => a + r.donoParte + (r.proj != null ? (r.donoLucroPrev || 0) : 0), 0))} previstos dos que estão em estoque` : '')) +
+      K('Os donos recebem', money(t.donoRecebe), '', false, t.donoLucro > 0.004 ? `${brl(t.donoLucro)} de lucro dos donos sócios` : 'pelos carros vendidos') + '</dl>';
+    if (f === 'Por dono') {
+      h += `<p class="mut small" style="margin:0">Quanto cada dono recebeu e ganhou com vocês. Clique no nome para ver os carros dele.</p>` + table([
+        { label: 'Dono', get: (o) => `<button class="linkbtn" data-act="cg-dono" data-id="${esc(o.dono)}"><b>${esc(o.dono)}</b></button><div class="mut small">${esc(o.carros.join(', '))}</div>` },
+        { label: 'Carros', r: true, get: (o) => `${o.n}<div class="mut small">${o.vendidos} ${o.vendidos === 1 ? 'vendido' : 'vendidos'}</div>` },
+        { label: 'Recebe nas vendas', r: true, get: (o) => `<b>${brl(o.recebe)}</b>${o.falta > 0.004 ? `<div class="neg small">falta repassar ${brl(o.falta)}</div>` : ''}` },
+        { label: 'Lucro dele', r: true, get: (o) => (o.lucro ? `<span class="${sign(o.lucro)}">${brl(o.lucro)}</span>` : '<span class="mut">—</span>') },
+        { label: 'Em estoque', r: true, get: (o) => (o.estoque ? `${brl(o.emEstoque)}${o.lucroPrev ? `<div class="mut small">lucro previsto ${brl(o.lucroPrev)}</div>` : ''}` : '<span class="mut">—</span>') },
+      ], c.porDono, null, 'Nenhum dono.');
+      box.innerHTML = h; return;
+    }
+    const so = S.ui.cgdono || '';
+    if (so) h += `<div class="toolbar"><span>Carros de <b>${esc(so)}</b></span><button class="btn sm" data-act="cg-dono" data-id="">Ver todos os donos</button></div>`;
+    const rows = c.rows.filter((r) => (!so || String(r.dono).trim().toLowerCase() === so.toLowerCase()) && (f === 'Todos' || (f === 'Em estoque' && !r.vendido) || (f === 'Vendidos' && r.vendido) || (f === 'A repassar' && r.vendido && r.falta > 0.004)));
     const sit = (r) => {
       const d = S.D[r.carId] || {};
       if (!r.vendido) return `Em estoque${d.dias != null ? `<div class="mut small">há ${d.dias} ${d.dias === 1 ? 'dia' : 'dias'}</div>` : ''}`;
@@ -317,9 +337,11 @@ views.consignados = {
       { label: 'Carro', get: (r) => `<b>${esc(r.car)}</b>${r.placa ? `<div class="mut small">${esc(r.placa)}</div>` : ''}` },
       { label: 'Dono', get: (r) => esc(r.dono || '—') },
       { label: 'Situação', get: sit },
-      { label: 'Repasse', r: true, get: (r) => `${brl(r.repasse)}${r.vendido ? `<div class="mut small">repassado ${brl(r.repassado)}</div>` : ''}` },
-      { label: 'Falta repassar', r: true, get: (r) => (r.vendido ? (r.falta > 0.004 ? `<span class="neg">${brl(r.falta)}</span>` : '<span class="mut">nada</span>') : '<span class="mut">depois da venda</span>') },
-      { label: 'Comissão', r: true, get: (r) => (r.vendido ? `<span class="${sign(r.comissao)}">${brl(r.comissao)}</span>` : (r.proj != null ? `<span class="mut">prevista ${brl(r.proj)}</span>` : '<span class="mut">sem anúncio</span>')) },
+      { label: 'Dono recebe', r: true, get: (r) => (r.vendido ? `<b>${brl(r.donoRecebe)}</b>${r.donoLucro ? `<div class="small ${sign(r.donoLucro)}">${brl(r.donoLucro)} de lucro</div>` : ''}<div class="mut small">repassado ${brl(r.repassado)}</div>`
+        : `<b>${brl(r.donoParte)}</b> <span class="mut small">fixo</span>${r.socio ? (r.donoLucroPrev != null && r.proj != null ? `<div class="small ${sign(r.donoLucroPrev)}">+ ${brl(r.donoLucroPrev)} de lucro projetado</div>` : '<div class="mut small">lucro: informe o anúncio para projetar</div>') : ''}`) },
+      { label: 'A repassar', r: true, get: (r) => (r.vendido ? (r.falta > 0.004 ? `<span class="neg">${brl(r.falta)}</span>` : '<span class="mut">nada</span>')
+        : `${brl(r.donoParte + (r.proj != null ? (r.donoLucroPrev || 0) : 0))}<div class="mut small">${r.socio && r.proj != null ? 'previsto, pelo anúncio' : 'quando vender'}</div>`) },
+      { label: 'Nosso ganho', r: true, get: (r) => (r.vendido ? `<span class="${sign(r.comissao)}">${brl(r.comissao)}</span>${r.gastos > 0.004 ? `<div class="mut small">e ${brl(r.gastos)} de gastos de volta</div>` : ''}` : (r.proj != null ? `<span class="mut">prevista ${brl(r.proj)}</span>` : '<span class="mut">sem anúncio</span>')) },
       { label: '', get: (r) => `<div class="row-acts">${r.vendido ? `<button class="btn sm" data-act="repasses" data-id="${r.carId}">Repasses</button>` : (S.canWrite ? `<button class="btn sm pri" data-act="sell-car" data-id="${r.carId}">Vender</button>` : '')}${S.canWrite ? `<button class="btn sm" data-act="edit-car" data-id="${r.carId}">Editar</button>` : ''}</div>` },
     ], rows, null, 'Nenhum carro neste filtro.');
     box.innerHTML = h;

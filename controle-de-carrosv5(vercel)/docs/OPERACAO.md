@@ -68,6 +68,8 @@ Não existe API gratuita e legítima que descubra o carro **pela placa**: o Sine
 são formulários, não APIs. Por isso a consulta por placa abaixo é opcional e paga.
 
 ## Consulta por placa pelo site zapcarconsulta.com.br (padrão, sem token)
+
+> **Novembro de 2026:** o site tirou do ar o endereço `/api/fipe-placa` (responde 404 para qualquer placa). O app avisa isso na tela. Para a consulta por placa voltar, cadastre a APIBrasil (seção abaixo / `APIBRASIL_BEARER` e `APIBRASIL_DEVICE_TOKEN`). A busca na tabela FIPE (marca > modelo > ano) continua funcionando sem nada.
 No cadastro do carro, ao **salvar** com uma placa nova (ou ao trocar a placa), o servidor consulta
 `https://www.zapcarconsulta.com.br/api/fipe-placa?placa=XXX0X00` (a mesma chamada que a página "Consulta FIPE grátis" faz) e grava no carro o
 **valor FIPE** (a versão mais provável), o **mês de referência** com o código FIPE ("outubro de 2026 · cód. 096003-9") e a cor.
