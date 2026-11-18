@@ -25,7 +25,7 @@ const lists = {
   pdTipos: ['Dívida', 'Abatimento'], // dívida entre sócios (comparado em public/js/calc.js)
   // Dívidas (empréstimos e carros a pagar). Os textos de modos, origens e status são comparados em public/js/calc.js: não renomeie.
   loanModes: ['Juros mensais', 'Parcelado', 'Personalizado'],
-  origens: ['Carro', 'Empréstimo'],
+  origens: ['Carro', 'Empréstimo', 'Gasto'],
   ptipos: ['À vista', 'Entrada', 'Parcela', 'Juros', 'Devolução'],
   paystatus: ['Pendente', 'Pago'],
   formasPag: ['Pix', 'Transferência', 'Boleto', 'Dinheiro', 'Cheque', 'Cartão de crédito', 'Financiamento', 'Débito automático', 'Outro'],

@@ -338,3 +338,18 @@ test('consignado com dono sócio cadastrado direto: entrou por 32 mil, 23 do don
   d = C.compute([car({ status: 'Vendido', vvenda: 42000, dvenda: HOJE })], [{ id: 1, carId: 'c', valor: 1000, quem: 'A' }], [], SET, HOJE).c;
   near(d.fDono, 23000 / 33000, 'dono: 23 de 33 mil');
 });
+
+test('gasto no cartão parcelado: metade de cada sócio e parcelas nas contas a pagar', () => {
+  const ex = [{ id: 5, carId: 'c', valor: 1000, quem: null, forma: 'Cartão de crédito', nParc: 3, venc1: '2026-10-10' }];
+  const d = C.compute([{ id: 'c', name: 'Gol', entT: 10000, status: 'Em estoque' }], ex, [], SET, HOJE).c;
+  near(d.gastA, 500, 'metade de A'); near(d.gastB, 500, 'metade de B');
+  const pay = [
+    { id: 1, expenseId: 5, carId: 'c', due: '2026-10-10', valor: 333.33, status: 'Pago', tipo: 'Parcela' },
+    { id: 2, expenseId: 5, carId: 'c', due: '2026-11-10', valor: 333.33, status: 'Pendente', tipo: 'Parcela' },
+    { id: 3, expenseId: 5, carId: 'c', due: '2026-12-10', valor: 333.34, status: 'Pendente', tipo: 'Parcela' },
+  ];
+  const dv = C.debts(pay, [], [{ id: 'c' }], HOJE, ex);
+  near(dv.porGasto[5].falta, 666.67, 'falta pagar no cartão'); near(dv.A, 333.335, 'A paga metade'); near(dv.total, 666.67, 'entra no a pagar');
+  assert.equal(dv.porGasto[5].nPago, 1); assert.equal(dv.porCar.c, undefined, 'não mistura com veículos a pagar');
+  assert.equal(C.debts(pay, [], [{ id: 'c' }], HOJE, [{ ...ex[0], deleted: true }]).total, 0, 'gasto excluído leva as parcelas');
+});

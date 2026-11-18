@@ -383,11 +383,22 @@ views.gastos = {
     $('#gcar').innerHTML = carOptions(S.ui.gcar);
     const all = S.expenses.filter((x) => !x.deleted);
     if (!all.length) { box.innerHTML = empty('Nenhum gasto lançado', 'Lance cada gasto com o carro, a categoria e quem pagou. Ele entra no custo do carro na hora.', 'Lançar primeiro gasto', 'new-exp'); return; }
-    const rows = all.filter((x) => (!S.ui.gcar || String(x.carId) === S.ui.gcar) && (!S.ui.gquem || x.quem === S.ui.gquem)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const rows = all.filter((x) => (!S.ui.gcar || String(x.carId) === S.ui.gcar) && (!S.ui.gquem || x.quem === S.ui.gquem || !x.quem)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const sum = (arr) => arr.reduce((a, x) => a + (Calc.num(x.valor) || 0), 0);
-    let h = `<dl class="grid kpis" style="margin:0 0 12px"><div class="kpi"><dt>Total</dt><dd>${brl(sum(rows))}</dd></div>${['A', 'B'].map((p) => `<div class="kpi"><dt>${esc(nm(p))}</dt><dd>${brl(sum(rows.filter((x) => x.quem === p)))}</dd></div>`).join('')}</dl>`;
+    const parte = (p) => rows.reduce((a, x) => a + (x.quem === p ? (Calc.num(x.valor) || 0) : x.quem ? 0 : (Calc.num(x.valor) || 0) / 2), 0);
+    // faturas do cartão ainda não pagas (todos os gastos, sem filtro)
+    const G = Object.values(S.DV.porGasto || {}), cFalta = G.reduce((a, g) => a + g.falta, 0), cVenc = G.reduce((a, g) => a + g.atrasado, 0);
+    const cProx = G.map((g) => g.prox).filter(Boolean).sort()[0];
+    let h = `<dl class="grid kpis" style="margin:0 0 12px"><div class="kpi"><dt>Total</dt><dd>${brl(sum(rows))}</dd></div>${['A', 'B'].map((p) => `<div class="kpi"><dt>${esc(nm(p))}</dt><dd>${brl(parte(p))}</dd></div>`).join('')}` +
+      (cFalta > 0.004 ? `<div class="kpi"><dt>Cartão a pagar</dt><dd class="${cVenc > 0.004 ? 'neg' : ''}">${brl(cFalta)}</dd><dd class="sub">${cVenc > 0.004 ? `${brl(cVenc)} vencido` : cProx ? `próxima fatura em ${dmy(cProx)}` : ''}</dd></div>` : '') + '</dl>';
+    const cartaoTxt = (x) => {
+      const g = S.DV.porGasto && S.DV.porGasto[x.id];
+      if (x.forma !== 'Cartão de crédito' || !g) return x.forma ? `<div class="mut small">${esc(x.forma)}</div>` : '';
+      const st = g.falta <= 0.004 ? '<span class="pill ok">Pago</span>' : g.atrasado > 0.004 ? `<span class="pill late">Fatura vencida ${brl(g.atrasado)}</span>` : `<span class="mut small">${g.nPago}/${g.n} pagas, próxima ${dmy(g.prox)}</span>`;
+      return `<div class="small">Cartão ${g.n > 1 ? g.n + 'x' : 'à vista'}${x.cartao ? ' (' + esc(x.cartao) + ')' : ''} ${st} <button class="linkbtn" data-act="dv-parc-exp" data-id="${x.id}">Parcelas</button></div>`;
+    };
     h += '<div class="tbl"><table><thead><tr><th>Data</th><th>Carro</th><th>Categoria</th><th>Descrição</th><th class="r">Valor</th><th>Quem</th><th></th></tr></thead><tbody>' + rows.map((x) =>
-      `<tr><td class="num">${dmy(x.date)}</td><td>${esc(carName(x.carId))}</td><td>${esc(x.cat || '')}</td><td>${esc(x.desc || '')}${x.obs ? `<div class="mut" style="font-size:12px">${esc(x.obs)}</div>` : ''}</td><td class="r num">${brl(Calc.num(x.valor))}</td><td>${esc(nm(x.quem))}</td><td style="white-space:nowrap">${S.canWrite ? `<button class="btn sm" data-act="edit-exp" data-id="${x.id}">Editar</button> <button class="btn sm danger" data-act="del-exp" data-id="${x.id}">Excluir</button>` : ''}</td></tr>`).join('') + '</tbody></table></div>';
+      `<tr><td class="num">${dmy(x.date)}</td><td>${esc(carName(x.carId))}</td><td>${esc(x.cat || '')}</td><td>${esc(x.desc || '')}${x.obs ? `<div class="mut" style="font-size:12px">${esc(x.obs)}</div>` : ''}</td><td class="r num">${brl(Calc.num(x.valor))}${cartaoTxt(x)}</td><td>${x.quem ? esc(nm(x.quem)) : 'Metade cada'}</td><td style="white-space:nowrap">${S.canWrite ? `<button class="btn sm" data-act="edit-exp" data-id="${x.id}">Editar</button> <button class="btn sm danger" data-act="del-exp" data-id="${x.id}">Excluir</button>` : ''}</td></tr>`).join('') + '</tbody></table></div>';
     box.innerHTML = rows.length ? h : '<div class="empty"><p class="mut" style="margin:0">Nenhum gasto com esse filtro.</p></div>';
   },
 };

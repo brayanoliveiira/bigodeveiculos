@@ -44,7 +44,7 @@ var Reports = (function () {
         v.aReceber += A ? d.aReceberA : d.aReceberB;
         v.rep += A ? d.repA : d.repB; v.repHoje += A ? d.repPagoA : d.repPagoB; // repasses a donos de carros consignados
       });
-      var gastoPeriodo = sumBy((expenses || []).filter(function (x) { return !x.deleted && D[x.carId] && x.quem === p && inRange(x.date, from, to); }), function (x) { return N0(x.valor); });
+      var gastoPeriodo = sumBy((expenses || []).filter(function (x) { return !x.deleted && D[x.carId] && (x.quem === p || !x.quem) && inRange(x.date, from, to); }), function (x) { return x.quem ? N0(x.valor) : N0(x.valor) / 2; });
       var jp = juros ? (p === 'A' ? juros.pagoA : juros.pagoB) : 0;
       v.juros = J / 2; v.jurosPago = jp; v.lucLiq = v.luc - J / 2;
       res[p] = {
@@ -213,9 +213,9 @@ var Reports = (function () {
     var cat = {}, mes = {}, car = {};
     ex.forEach(function (x) {
       var v = N0(x.valor), k = x.cat || 'Sem categoria', c = cat[k] || (cat[k] = { cat: k, n: 0, total: 0, A: 0, B: 0 });
-      c.n++; c.total += v; if (x.quem === 'A') c.A += v; else if (x.quem === 'B') c.B += v;
+      c.n++; c.total += v; if (x.quem === 'A') c.A += v; else if (x.quem === 'B') c.B += v; else { c.A += v / 2; c.B += v / 2; }
       var m = mes[mkey(x.date)] || (mes[mkey(x.date)] = { mes: mkey(x.date), total: 0, A: 0, B: 0 });
-      m.total += v; if (x.quem === 'A') m.A += v; else if (x.quem === 'B') m.B += v;
+      m.total += v; if (x.quem === 'A') m.A += v; else if (x.quem === 'B') m.B += v; else { m.A += v / 2; m.B += v / 2; }
       var cr = car[x.carId] || (car[x.carId] = { carId: x.carId, car: D[x.carId].c.name, total: 0, n: 0 });
       cr.total += v; cr.n++;
     });
@@ -224,7 +224,7 @@ var Reports = (function () {
     var meses = monthsBetween(Object.keys(mes)).map(function (m) { return mes[m] || { mes: m, total: 0, A: 0, B: 0 }; });
     var cars = Object.keys(car).map(function (k) { return car[k]; }).sort(function (a, b) { return b.total - a.total; });
     return {
-      total: total, n: ex.length, A: sumBy(ex, function (x) { return x.quem === 'A' ? N0(x.valor) : 0; }), B: sumBy(ex, function (x) { return x.quem === 'B' ? N0(x.valor) : 0; }),
+      total: total, n: ex.length, A: sumBy(ex, function (x) { return x.quem === 'A' ? N0(x.valor) : x.quem ? 0 : N0(x.valor) / 2; }), B: sumBy(ex, function (x) { return x.quem === 'B' ? N0(x.valor) : x.quem ? 0 : N0(x.valor) / 2; }),
       porCarro: cars.length ? total / cars.length : 0, cats: cats, meses: meses, cars: cars,
     };
   }

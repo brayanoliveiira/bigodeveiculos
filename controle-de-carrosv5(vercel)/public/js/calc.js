@@ -64,6 +64,7 @@ var Calc = (function () {
       var d = out[x.carId]; if (!d) return;
       var v = N0(x.valor); d.gast += v;
       if (x.quem === P[0]) d.gastA += v; else if (x.quem === P[1]) d.gastB += v;
+      else { d.gastA += v / 2; d.gastB += v - v / 2; } // sem sócio escolhido: metade cada (ex.: cartão pago meio a meio)
     });
     planned.filter(function (x) { return !x.deleted; }).forEach(function (x) {
       var d = out[x.carId]; if (!d) return;
@@ -371,18 +372,21 @@ var Calc = (function () {
   }
   /* Resumo das contas a pagar. Conta paga por "ambos" (quem vazio) divide meio a meio.
      Ignora contas excluídas e as de empréstimo ou carro excluído. */
-  function debts(payables, loans, cars, today) {
-    var lv = {}, cv = {}, s = { total: 0, A: 0, B: 0, atrasado: 0, prox30: 0, pago: 0, jurosPagos: 0, jurosPend: 0, jurosMes: 0, prox: null, n: 0, porLoan: {}, porCar: {} };
+  /* expenses (opcional): parcelas de gasto no cartão (expenseId) ficam em porGasto; gasto excluído leva as parcelas junto. */
+  function debts(payables, loans, cars, today, expenses) {
+    var lv = {}, cv = {}, ev = {}, s = { total: 0, A: 0, B: 0, atrasado: 0, prox30: 0, pago: 0, jurosPagos: 0, jurosPend: 0, jurosMes: 0, prox: null, n: 0, porLoan: {}, porCar: {}, porGasto: {} };
     (loans || []).forEach(function (l) { if (!l.deleted) lv[l.id] = l; });
     (cars || []).forEach(function (c) { if (!c.deleted) cv[c.id] = c; });
+    (expenses || []).forEach(function (x) { if (!x.deleted) ev[x.id] = x; });
     var em30 = addDays(today, 30);
     function grp(key, id) { return s[key][id] || (s[key][id] = { total: 0, pago: 0, falta: 0, A: 0, B: 0, atrasado: 0, prox: null, proxValor: 0, n: 0, nPago: 0, jurosPagos: 0, fim: null, itens: [], aDevolver: 0 }); }
     Object.keys(lv).forEach(function (id) { if (semData(lv[id])) grp('porLoan', id); });
     s.aDevolver = 0;
     (payables || []).forEach(function (x) {
       if (x.deleted) return;
-      if (x.loanId != null ? !lv[x.loanId] : !cv[x.carId]) return;
-      var v = N0(x.valor), key = x.loanId != null ? 'porLoan' : 'porCar', id = x.loanId != null ? x.loanId : x.carId;
+      if (x.expenseId != null) { if (expenses && !ev[x.expenseId]) return; }
+      else if (x.loanId != null ? !lv[x.loanId] : !cv[x.carId]) return;
+      var v = N0(x.valor), key = x.expenseId != null ? 'porGasto' : x.loanId != null ? 'porLoan' : 'porCar', id = x.expenseId != null ? x.expenseId : x.loanId != null ? x.loanId : x.carId;
       var g = grp(key, id);
       g.total += v; g.n++; g.itens.push(x);
       if (!g.fim || x.due > g.fim) g.fim = x.due;
@@ -415,6 +419,7 @@ var Calc = (function () {
       if (proporcional(l)) s.jurosPagos += g.jurosPagos;
       s.jurosPend += Math.max(0, r2(g.juros - g.jurosPagos)); // juros que ainda vamos pagar
     });
+    Object.keys(s.porGasto).forEach(function (id) { s.porGasto[id].itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); }); s.porGasto[id].quitado = s.porGasto[id].falta <= 0.004; });
     Object.keys(s.porCar).forEach(function (id) { s.porCar[id].itens.sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); }); });
     return s;
   }

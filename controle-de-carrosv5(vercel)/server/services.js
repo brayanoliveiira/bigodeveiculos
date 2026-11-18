@@ -93,6 +93,7 @@ async function crossCheck(db, name, merged, selfId) {
     if (!(merged.valor > 0)) throw new HttpError(400, 'O valor precisa ser maior que zero.');
     if (merged.origem === 'Carro' && merged.carId == null) throw new HttpError(400, 'Escolha o carro desta conta.');
     if (merged.origem === 'Empréstimo' && merged.loanId == null) throw new HttpError(400, 'Escolha o empréstimo desta conta.');
+    if (merged.origem === 'Gasto' && merged.expenseId == null) throw new HttpError(400, 'Escolha o gasto desta conta.');
     if (merged.status === 'Pago' && isBlank(merged.paidAt)) throw new HttpError(400, 'Informe a data do pagamento.');
   }
   if (name === 'receipts' && merged.status === 'Recebido' && isBlank(merged.paidAt)) {
@@ -319,23 +320,26 @@ async function schedulePlan(db, user, carId, parts) {
  * Programa as contas a pagar de um empréstimo (loanId) ou da compra de um carro (carId), tudo numa transação.
  * Com replace (só empréstimo), as parcelas ainda pendentes do empréstimo são trocadas pelas novas; as pagas ficam.
  */
-async function schedulePayables(db, user, { loanId, carId, replace, parts }) {
+async function schedulePayables(db, user, { loanId, carId, expenseId, replace, parts }) {
   const def = entities.payables;
   return db.tx(async (db) => {
-    const lid = loanId == null ? null : Number(loanId), cid = carId == null ? null : Number(carId);
-    const owner = lid != null ? await db.get('SELECT * FROM loans WHERE id = ?', lid) : await db.get('SELECT * FROM cars WHERE id = ?', cid);
-    if (!owner || owner.deleted) throw new HttpError(404, lid != null ? 'Empréstimo não encontrado.' : 'Carro não encontrado.');
+    const eid = expenseId == null ? null : Number(expenseId);
+    const lid = eid != null || loanId == null ? null : Number(loanId), cid = carId == null ? null : Number(carId);
+    // parcelas de um gasto no cartão: o dono é o gasto (o carro vem dele)
+    const owner = eid != null ? await db.get('SELECT * FROM expenses WHERE id = ?', eid) : lid != null ? await db.get('SELECT * FROM loans WHERE id = ?', lid) : await db.get('SELECT * FROM cars WHERE id = ?', cid);
+    if (!owner || owner.deleted) throw new HttpError(404, eid != null ? 'Gasto não encontrado.' : lid != null ? 'Empréstimo não encontrado.' : 'Carro não encontrado.');
     if (!Array.isArray(parts) || !parts.length || parts.length > 130) throw new HttpError(400, 'Informe de 1 a 130 parcelas.');
     const p = await partners(db);
     const ts = now();
     const changes = [];
-    if (lid != null && replace) {
-      const old = await db.all("SELECT id FROM payables WHERE loanId = ? AND deleted = 0 AND status = 'Pendente'", lid);
+    if ((lid != null || eid != null) && replace) {
+      const old = await db.all(`SELECT id FROM payables WHERE ${eid != null ? 'expenseId' : 'loanId'} = ? AND deleted = 0 AND status = 'Pendente'`, eid != null ? eid : lid);
       for (const o of old) await db.run('UPDATE payables SET deleted = 1, updatedBy = ?, updatedAt = ? WHERE id = ?', user.id, ts, o.id);
       if (old.length) changes.push({ f: 'Parcelas pendentes anteriores', de: `${old.length}`, para: 'substituídas' });
     }
     for (const [i, part] of parts.entries()) {
-      const input = { ...part, origem: lid != null ? 'Empréstimo' : 'Carro', loanId: lid, carId: lid != null ? (owner.carId ?? null) : cid };
+      const input = eid != null ? { forma: 'Cartão de crédito', credor: owner.cartao || null, ...part, origem: 'Gasto', expenseId: eid, loanId: null, carId: owner.carId }
+        : { ...part, origem: lid != null ? 'Empréstimo' : 'Carro', loanId: lid, carId: lid != null ? (owner.carId ?? null) : cid };
       if (lid != null) input.credor = owner.credor;
       const { values, errors } = await validate(def, input, db, null);
       for (const [k, f] of Object.entries(def.fields)) if (values[k] === undefined && f.default !== undefined) values[k] = f.default;
@@ -349,7 +353,8 @@ async function schedulePayables(db, user, { loanId, carId, replace, parts }) {
         para: `${await fmtValue(db, def.fields.valor, values.valor, p)} em ${await fmtValue(db, def.fields.due, values.due, p)}${values.status === 'Pago' ? ' (pago)' : ''}`,
       });
     }
-    if (lid != null) await writeAudit(db, user.id, 'loan', lid, entities.loans.labelOf(owner), 'programou', changes);
+    if (eid != null) await writeAudit(db, user.id, 'expense', eid, owner.desc || owner.cat || 'gasto', 'programou no cartão', changes);
+    else if (lid != null) await writeAudit(db, user.id, 'loan', lid, entities.loans.labelOf(owner), 'programou', changes);
     else await writeAudit(db, user.id, 'car', cid, owner.name, 'programou a pagar', changes);
     await bump(db);
     return { count: parts.length };

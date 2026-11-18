@@ -19,7 +19,7 @@ const banner = (msg, bad) => { $('#banner').innerHTML = msg ? `<div class="banne
 /* ---------- dados ---------- */
 function recompute() {
   S.D = Calc.compute(S.cars, S.expenses, S.planned, S.settings, today(), S.receipts, S.payments, S.repasses);
-  S.DV = Calc.debts(S.payables, S.loans, S.cars, today());
+  S.DV = Calc.debts(S.payables, S.loans, S.cars, today(), S.expenses);
   // Carros que hoje "carregam" dinheiro de empréstimo ainda não quitado (segue as trocas a partir do carro comprado).
   S.loanHold = {};
   (S.loans || []).filter((l) => !l.deleted && l.carId != null && !(S.DV.porLoan[l.id] && S.DV.porLoan[l.id].quitado)).forEach((l) => {
@@ -283,7 +283,8 @@ document.addEventListener('click', async (ev) => {
       const soma = (o, k) => Object.values(o).reduce((a, g) => a + (g[k] || 0), 0);
       const linha = (go, nome, falta, venc, n) => `<li><button type="button" class="${venc > 0.004 ? 'bad' : ''}" data-go="${go}"><span>${esc(nome)}: <b>${brl(falta)}</b>${venc > 0.004 ? `, ${brl(venc)} vencido` : ''}<span class="mut small"> em ${n} ${n === 1 ? 'conta' : 'contas'}</span></span><span class="go">Ver</span></button></li>`;
       const nv = Object.values(S.DV.porCar).filter((g) => g.falta > 0.004).length, ne = Object.values(S.DV.porLoan).filter((g) => g.falta > 0.004).length;
-      openSheet(`<h2>A pagar: ${brl(S.DV.total)}</h2><ul class="att">${linha('apagar', 'Veículos a pagar', soma(S.DV.porCar, 'falta'), soma(S.DV.porCar, 'atrasado'), nv)}${linha('emprestimos', 'Empréstimos', soma(S.DV.porLoan, 'falta'), soma(S.DV.porLoan, 'atrasado'), ne)}</ul>
+      const ng = Object.values(S.DV.porGasto || {}).filter((g) => g.falta > 0.004).length;
+      openSheet(`<h2>A pagar: ${brl(S.DV.total)}</h2><ul class="att">${linha('apagar', 'Veículos a pagar', soma(S.DV.porCar, 'falta'), soma(S.DV.porCar, 'atrasado'), nv)}${linha('emprestimos', 'Empréstimos', soma(S.DV.porLoan, 'falta'), soma(S.DV.porLoan, 'atrasado'), ne)}${ng ? linha('gastos', 'Cartão (gastos parcelados)', soma(S.DV.porGasto, 'falta'), soma(S.DV.porGasto, 'atrasado'), ng) : ''}</ul>
         <p class="mut small" style="margin:0">${esc(names().A)} paga ${brl(S.DV.A)} e ${esc(names().B)} paga ${brl(S.DV.B)}.${S.DV.prox ? ` Próximo vencimento em ${dmyStr(S.DV.prox)}.` : ''}</p>
         <div class="acts"><button type="button" class="btn" data-x="cancel">Fechar</button></div>`);
       break;

@@ -24,6 +24,7 @@ const temLocal = (v) => !!v.loc && v.loc !== 'Pátio / Loja';
 const splitCustom = () => { const e = document.getElementById('cp_split'); return !!e && e.value === 'custom'; };
 const temHist = (v) => !!(v.leilao || v.sinistro);
 const isJurosMes = (v) => v.modo === 'Juros mensais';
+const isCartao = (v) => v.forma === 'Cartão de crédito';
 const isParcelado = (v) => v.modo === 'Parcelado';
 const isLivre = (v) => v.modo === 'Personalizado';
 // 'Entregue' é posto pelo servidor quando o carro é vendido: não aparece para escolher.
@@ -77,8 +78,14 @@ const F = {
   expense: { col: 'expenses', title: 'gasto', fields: () => [
     { k: 'carId', label: 'Carro', t: 'car', req: true, full: true },
     { k: 'date', label: 'Data', t: 'date', req: true }, { k: 'valor', label: 'Valor', t: 'money', req: true },
-    { k: 'cat', label: 'Categoria', t: 'sel', opts: listOpts('cats'), req: true }, { k: 'quem', label: 'Quem gastou', t: 'sel', opts: partnerOpts, req: true },
-    { k: 'desc', label: 'Descrição', t: 'text', full: true }, { k: 'obs', label: 'Observação', t: 'text', full: true },
+    { k: 'cat', label: 'Categoria', t: 'sel', opts: listOpts('cats'), req: true }, { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada' },
+    { k: 'desc', label: 'Descrição', t: 'text', full: true },
+    { k: 'forma', label: 'Forma de pagamento', t: 'sel', opts: listOpts('formasPag'), blank: 'Não informada' },
+    { k: 'nParc', label: 'Em quantas parcelas', t: 'int', showIf: isCartao, hint: '1 = à vista no cartão (uma fatura).' },
+    { k: 'venc1', label: 'Vencimento da 1ª fatura', t: 'date', showIf: isCartao, hint: 'As outras parcelas vencem no mesmo dia dos meses seguintes.' },
+    { k: 'cartao', label: 'Qual cartão', t: 'text', showIf: isCartao, hint: 'Ex.: Nubank do Brayan.' },
+    { cartaoPrev: true },
+    { k: 'obs', label: 'Observação', t: 'text', full: true },
   ], defaults: () => ({ date: today() }) },
   planned: { col: 'planned', title: 'gasto previsto', fields: () => [
     { k: 'carId', label: 'Carro', t: 'car', req: true, full: true },
@@ -217,6 +224,7 @@ export function openForm(mode, existing, opts = {}) {
     if (f.crono) { h += cronoHtml(f.crono, `data-k="_${f.crono}" data-pago="${Number(opts.cronoPago) || 0}"`, opts.cronoRows); continue; }
     if (f.venda) { h += vendaHtml(existing); continue; }
     if (f.compra) { h += compraHtml(existing); continue; }
+    if (f.cartaoPrev) { h += '<div class="field full cp-prev" id="ex_prev" hidden></div>'; continue; }
     if (f.lookup) {
       h += `<div class="field full plk"><div class="plk-row">${S.placa ? '<button type="button" class="btn" id="plbtn">Consultar placa e FIPE</button>' : ''}<button type="button" class="btn" id="fpbtn">Buscar valor na tabela FIPE (grátis)</button></div>` +
         `<div id="plres" aria-live="polite"></div>` +
@@ -244,6 +252,7 @@ export function openForm(mode, existing, opts = {}) {
     }
     if (mode === 'car') { compraRefresh(cur); vendaRefresh(cur); }
     if (mode === 'loan') emprestimoSoma(cur);
+    if (mode === 'expense') cartaoRefresh(cur, existing);
   };
   m.oninput = (ev) => {
     const el = ev.target;
@@ -327,6 +336,12 @@ export function openForm(mode, existing, opts = {}) {
       const nota = `Na troca, pagamos ${brl(venda.nos.pago)} de diferença ao comprador${venda.nos.como ? ' com ' + venda.nos.como : ''}.`;
       send.obs = send.obs ? `${send.obs}\n${nota}` : nota;
     }
+    let cartao = null; // gasto no cartão: parcelas que vão para as contas a pagar
+    if (mode === 'expense' && send.forma === 'Cartão de crédito') {
+      if (!send.venc1) { $('#ferr').textContent = 'Informe o vencimento da 1ª fatura.'; return; }
+      if (send.nParc == null) send.nParc = 1;
+      cartao = cartaoParts(send);
+    } else if (mode === 'expense') { send.nParc = null; send.venc1 = null; send.cartao = null; }
     if (opts.beforeSave) { const e = opts.beforeSave(send); if (e) { $('#ferr').textContent = e; return; } } // lê o que não é campo do item (ex.: pagamentos personalizados)
     if (opts.extra) Object.assign(send, opts.extra);
     saving = true; $('#fsave').disabled = true;
@@ -335,7 +350,8 @@ export function openForm(mode, existing, opts = {}) {
         const res = await api('POST', '/api/' + def.col, send);
         if (compra) await api('POST', '/api/payables/plan', { carId: res.item.id, parts: compra.parts });
         if (venda) await salvarVenda(res.item.id, venda, send);
-        toast(venda && (venda.troca || venda.parts) ? 'Salvo. Venda registrada com troca e recebimentos.' : compra ? 'Salvo. O pagamento do carro foi para Veículos a pagar.' : 'Salvo.');
+        if (cartao) await api('POST', '/api/payables/plan', { expenseId: res.item.id, parts: cartao });
+        toast(venda && (venda.troca || venda.parts) ? 'Salvo. Venda registrada com troca e recebimentos.' : compra ? 'Salvo. O pagamento do carro foi para Veículos a pagar.' : cartao ? `Salvo. ${cartao.length === 1 ? 'A fatura foi' : `As ${cartao.length} parcelas foram`} para as contas a pagar.` : 'Salvo.');
         await hooks.reload();
         if (opts.afterSave) opts.afterSave(res.item);
       } else {
@@ -343,7 +359,8 @@ export function openForm(mode, existing, opts = {}) {
         const res = await api('PATCH', `/api/${def.col}/${existing.id}`, body);
         if (compra) await api('POST', '/api/payables/plan', { carId: existing.id, parts: compra.parts });
         if (venda) await salvarVenda(existing.id, venda, send);
-        toast(venda && (venda.troca || venda.parts) ? 'Salvo. Venda registrada com troca e recebimentos.' : compra ? 'Salvo. O pagamento do carro foi para Veículos a pagar.' : res.changed ? 'Alteração salva.' : 'Nada mudou.');
+        const cp = mode === 'expense' ? await replanCartao(existing, send, cartao) : '';
+        toast(venda && (venda.troca || venda.parts) ? 'Salvo. Venda registrada com troca e recebimentos.' : compra ? 'Salvo. O pagamento do carro foi para Veículos a pagar.' : cp || (res.changed ? 'Alteração salva.' : 'Nada mudou.'));
         await hooks.reload();
       }
       closeModal();
@@ -962,4 +979,53 @@ export function openPlanForm(carId, onDone) {
       $('#ferr').textContent = e.message; saving = false; $('#fsave').disabled = false;
     }
   };
+}
+
+/* ---------- gasto no cartão parcelado: parcelas nas contas a pagar ---------- */
+/** Parcelas de um gasto no cartão: valor dividido em n (centavos na última), vencendo no dia da fatura de cada mês. */
+export function cartaoParts(g) {
+  const n = Math.max(1, Math.min(48, Math.round(Number(g.nParc) || 1))), total = Math.round((Calc.num(g.valor) || 0) * 100);
+  if (!(total > 0) || !g.venc1) return [];
+  const each = Math.floor(total / n), left = total - each * n;
+  return Array.from({ length: n }, (_, i) => ({ label: n === 1 ? 'À vista no cartão' : `${i + 1}/${n}`, tipo: n === 1 ? 'À vista' : 'Parcela', due: Calc.addMonths(g.venc1, i),
+    valor: (each + (i === n - 1 ? left : 0)) / 100, quem: g.quem || null, forma: 'Cartão de crédito', credor: g.cartao || null, status: 'Pendente' }));
+}
+const parcelasDoGasto = (id) => (S.payables || []).filter((p) => !p.deleted && p.expenseId === id);
+/** Edição: se mudou valor, parcelas, fatura, cartão ou quem paga, refaz as parcelas que ainda não foram pagas (as pagas ficam). */
+async function replanCartao(old, send, parts) {
+  const atuais = parcelasDoGasto(old.id), pagas = atuais.filter((p) => p.status === 'Pago'), pend = atuais.filter((p) => p.status !== 'Pago');
+  const chave = (x) => JSON.stringify(['valor', 'forma', 'nParc', 'venc1', 'cartao', 'quem'].map((k) => x[k] ?? null));
+  const mudou = chave(old) !== chave({ ...old, ...send }) || (parts && !atuais.length);
+  if (!mudou) return '';
+  if (!parts) { // deixou de ser cartão: tira as parcelas pendentes
+    for (const p of pend) await api('DELETE', `/api/payables/${p.id}`);
+    return pend.length ? 'Alteração salva. As parcelas pendentes do cartão foram retiradas.' : '';
+  }
+  // o que já foi pago fica; o que falta do valor novo é dividido entre as parcelas que ainda vão vencer
+  const resto = parts.filter((x) => !pagas.some((p) => p.due === x.due));
+  const falta = Math.round(((Calc.num(send.valor) || 0) - pagas.reduce((a, p) => a + (Calc.num(p.valor) || 0), 0)) * 100);
+  if (resto.length && falta > 0) {
+    const each = Math.floor(falta / resto.length), left = falta - each * resto.length;
+    resto.forEach((x, i) => { x.valor = (each + (i === resto.length - 1 ? left : 0)) / 100; });
+  }
+  if (resto.length) await api('POST', '/api/payables/plan', { expenseId: old.id, replace: true, parts: resto });
+  else for (const p of pend) await api('DELETE', `/api/payables/${p.id}`);
+  return 'Alteração salva. As parcelas do cartão que faltam pagar foram refeitas.';
+}
+/** Prévia no formulário: "3x de R$ 333,33 nas faturas de 10/12, 10/01 e 10/02, metade de cada sócio". */
+function cartaoRefresh(cur, existing) {
+  const box = $('#ex_prev');
+  if (!box) return;
+  box.hidden = !isCartao(cur);
+  if (box.hidden) return;
+  const valor = parseMoney(cur.valor), nParc = parseInt(String(cur.nParc || '1').replace(/\D/g, ''), 10) || 1;
+  const parts = cartaoParts({ valor: Number.isNaN(valor) ? null : valor, nParc, venc1: cur.venc1, quem: cur.quem });
+  if (!parts.length) { box.innerHTML = '<span class="mut">Informe o valor e o vencimento da 1ª fatura para ver as parcelas.</span>'; return; }
+  const datas = parts.map((p) => dmy(p.due)), lista = datas.length > 4 ? `${datas.slice(0, 3).join(', ')} … ${datas[datas.length - 1]}` : datas.join(', ').replace(/, ([^,]*)$/, ' e $1');
+  const quem = cur.quem ? `só ${names()[cur.quem]}` : `metade de cada (${brl(parts[0].valor / 2)} de ${names().A} e de ${names().B} por fatura)`;
+  const pg = existing ? parcelasDoGasto(existing.id).filter((p) => p.status === 'Pago') : [];
+  const pagas = pg.length;
+  const resto = parts.filter((x) => !pg.some((p) => p.due === x.due)), falta = Math.round(((Number.isNaN(valor) ? 0 : valor) - pg.reduce((a, p) => a + (Calc.num(p.valor) || 0), 0)) * 100);
+  if (pagas && resto.length && falta > 0) { const e = Math.floor(falta / resto.length); resto.forEach((x, i) => { x.valor = (e + (i === resto.length - 1 ? falta - e * resto.length : 0)) / 100; }); }
+  box.innerHTML = `${parts.length === 1 ? `Uma fatura de <b>${brl(parts[0].valor)}</b>` : `<b>${parts.length}x de ${brl(parts[0].valor)}</b>`} ${parts.length === 1 ? 'em' : 'nas faturas de'} ${esc(lista)}, pagas ${esc(quem)}. Vão para as contas a pagar; marque cada uma como paga quando pagar a fatura.${pagas && resto.length ? ` <span class="mut">${pagas} já ${pagas === 1 ? 'paga continua' : 'pagas continuam'} como ${pagas === 1 ? 'está' : 'estão'}; ${resto.length === 1 ? 'a que falta fica' : `as ${resto.length} que faltam ficam`} com ${brl(resto[0].valor)}.</span>` : ''}`;
 }

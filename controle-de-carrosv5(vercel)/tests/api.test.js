@@ -363,3 +363,20 @@ test('dívida entre sócios: cadastro, abatimento num carro e validação', asyn
   assert.equal((await adm('POST', '/api/partnerDebts', { date: '2026-11-10', tipo: 'Outro', devedor: 'B', valor: 10 })).status, 400);
   assert.equal((await adm('GET', '/api/data')).json.partnerDebts.length >= 2, true);
 });
+
+test('gasto no cartão parcelado: sem sócio = metade cada, parcelas ligadas ao gasto e refeitas na edição', async () => {
+  const adm = client();
+  await adm('POST', '/api/login', { username: 'brayan', password: 'senha-do-brayan' });
+  const car = (await adm('POST', '/api/cars', { name: 'Kombi', dcompra: '2026-11-01', entT: 20000 })).json.item;
+  const g = await adm('POST', '/api/expenses', { carId: car.id, date: '2026-11-15', cat: 'Peças', valor: 900, forma: 'Cartão de crédito', nParc: 3, venc1: '2026-12-10', cartao: 'Nubank' });
+  assert.equal(g.status, 201); assert.equal(g.json.item.quem, null);
+  const parts = [1, 2, 3].map((i) => ({ label: `${i}/3`, tipo: 'Parcela', due: `2027-0${i}-10`, valor: 300 }));
+  assert.equal((await adm('POST', '/api/payables/plan', { expenseId: g.json.item.id, parts })).status, 201);
+  let pays = (await adm('GET', '/api/data')).json.payables.filter((p) => p.expenseId === g.json.item.id && !p.deleted);
+  assert.equal(pays.length, 3); assert.ok(pays.every((p) => p.origem === 'Gasto' && p.carId === car.id && p.forma === 'Cartão de crédito' && p.credor === 'Nubank'));
+  await adm('PATCH', `/api/payables/${pays[0].id}`, { status: 'Pago', paidAt: '2027-01-10' });
+  assert.equal((await adm('POST', '/api/payables/plan', { expenseId: g.json.item.id, replace: true, parts: parts.slice(1).map((p) => ({ ...p, valor: 400 })) })).status, 201);
+  pays = (await adm('GET', '/api/data')).json.payables.filter((p) => p.expenseId === g.json.item.id && !p.deleted);
+  assert.equal(pays.length, 3, 'a paga fica, as pendentes são trocadas'); assert.equal(pays.filter((p) => p.valor === 400).length, 2);
+  assert.equal((await adm('POST', '/api/payables', { origem: 'Gasto', due: '2027-01-01', valor: 1, status: 'Pendente' })).status, 400);
+});

@@ -146,15 +146,17 @@ views.apagar = {
 /* ---------- janela de parcelas (de um empréstimo ou de um carro) ---------- */
 export function renderParcelas(owner) {
   S.ui.dvOwner = owner;
-  const isLoan = owner.loanId != null;
-  const l = isLoan ? itemOf('loan', owner.loanId) : null, c = isLoan ? null : carOf(owner.carId);
-  if ((isLoan && !l) || (!isLoan && !c)) { closeModal(); return; }
-  const g = isLoan ? S.DV.porLoan[l.id] : S.DV.porCar[c.id];
+  const isGasto = owner.expenseId != null, isLoan = !isGasto && owner.loanId != null;
+  const ex = isGasto ? itemOf('expense', owner.expenseId) : null;
+  const l = isLoan ? itemOf('loan', owner.loanId) : null, c = isLoan ? null : carOf(isGasto ? (ex && ex.carId) : owner.carId);
+  if ((isGasto && (!ex || !c)) || (isLoan && !l) || (!isLoan && !isGasto && !c)) { closeModal(); return; }
+  const g = isGasto ? S.DV.porGasto[ex.id] : isLoan ? S.DV.porLoan[l.id] : S.DV.porCar[c.id];
   const itens = g ? g.itens : [];
-  const title = isLoan ? `Empréstimo — ${esc(l.credor)} (${brl(Calc.num(l.valor))})` : `A pagar — ${esc(c.name)}`;
+  const title = isGasto ? `Cartão — ${esc(ex.desc || ex.cat)} (${esc(c.name)})` : isLoan ? `Empréstimo — ${esc(l.credor)} (${brl(Calc.num(l.valor))})` : `A pagar — ${esc(c.name)}`;
   const m = $('#modal');
   m.hidden = false;
   m.innerHTML = `<div class="sheet wide dv-sum"><h2>${title}</h2>` +
+    (isGasto ? `<p class="mut small" style="margin:0">${brl(Calc.num(ex.valor))} em ${Number(ex.nParc) > 1 ? ex.nParc + ' parcelas' : 'uma fatura'}${ex.cartao ? ' no ' + esc(ex.cartao) : ''}. Quem paga: ${esc(quemTxt(ex.quem).toLowerCase())}. Marque "Paguei" quando a fatura for paga.</p>` : '') +
     (isLoan ? `<p class="mut small" style="margin:0">${esc(condicao(l, g))}. Quem paga: ${esc(quemTxt(l.quem).toLowerCase())}.</p>${l.obs ? `<p class="small" style="margin:0"><b>Finalidade:</b> ${esc(l.obs)}</p>` : ''}${l.carId != null ? `<div class="small">${trailHtml(l)}</div>` : ''}` : '') +
     `<dl class="grid kpis" style="margin:0">${K('Total', brl(g ? g.total : 0))}${K('Pago', brl(g ? g.pago : 0))}${K('Falta', brl(g ? g.falta : 0), '', true)}${isLoan ? K('Juros total', brl(g ? g.juros : 0)) : ''}${g && g.aDevolver > 0.004 ? K('A devolver, sem data', brl(g.aDevolver)) : ''}</dl>` +
     (g && g.aDevolver > 0.004 ? '<p class="mut small" style="margin:0">Sem data para devolver: os juros estão lançados até 12 meses à frente ("Refazer parcelas pendentes" lança mais). Quando combinarem a devolução, edite o empréstimo e informe a data.</p>' : '') +
@@ -167,7 +169,7 @@ export function renderParcelas(owner) {
       { label: 'Situação', get: (p) => (p.status === 'Pago' ? `<span class="pill ok">Pago em ${dmy(p.paidAt)}</span>` : p.due < today() ? '<span class="pill late">Vencida</span>' : '<span class="pill">Em dia</span>') },
       { label: '', get: (p) => (S.canWrite ? `<div class="row-acts">${p.status === 'Pago' ? `<button class="btn sm" data-act="dv-undo" data-id="${p.id}">Desfazer</button>` : `<button class="btn sm" data-act="dv-pay" data-id="${p.id}">Paguei</button>`}<button class="btn sm" data-act="dv-edit-pg" data-id="${p.id}">Editar</button><button class="btn sm" data-act="dv-del-pg" data-id="${p.id}">Excluir</button></div>` : '') },
     ], itens, null, 'Nenhuma parcela.') +
-    `<div class="acts">${S.canWrite && isLoan ? (l.modo === 'Personalizado' ? `<button class="btn" data-act="dv-edit-loan" data-id="${l.id}">Editar pagamentos</button>` : `<button class="btn" data-act="dv-replan" data-id="${l.id}">Refazer parcelas pendentes</button>`) : ''}${S.canWrite && !isLoan ? `<button class="btn" data-act="dv-new-cardebt" data-id="${c.id}">Acrescentar pagamento</button>` : ''}<button class="btn pri" data-x="cancel">Fechar</button></div></div>`;
+    `<div class="acts">${S.canWrite && isLoan ? (l.modo === 'Personalizado' ? `<button class="btn" data-act="dv-edit-loan" data-id="${l.id}">Editar pagamentos</button>` : `<button class="btn" data-act="dv-replan" data-id="${l.id}">Refazer parcelas pendentes</button>`) : ''}${S.canWrite && isGasto ? `<button class="btn" data-act="edit-exp" data-id="${ex.id}">Editar o gasto</button>` : ''}${S.canWrite && !isLoan && !isGasto ? `<button class="btn" data-act="dv-new-cardebt" data-id="${c.id}">Acrescentar pagamento</button>` : ''}<button class="btn pri" data-x="cancel">Fechar</button></div></div>`;
   m.onclick = (ev) => { if (ev.target === m || ev.target.getAttribute?.('data-x') === 'cancel') { S.ui.dvOwner = null; closeModal(); } };
 }
 
@@ -326,6 +328,7 @@ document.addEventListener('click', async (ev) => {
     }
     case 'dv-parc-loan': renderParcelas({ loanId: Number(id) }); break;
     case 'dv-parc-car': renderParcelas({ carId: Number(id) }); break;
+    case 'dv-parc-exp': renderParcelas({ expenseId: Number(id) }); break;
     case 'dv-new-cardebt': carDebtForm(id ? Number(id) : null); break;
     case 'dv-replan': {
       const l = itemOf('loan', id);
