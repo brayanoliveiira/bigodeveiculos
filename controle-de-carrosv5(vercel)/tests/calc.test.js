@@ -325,3 +325,16 @@ test('consignado em sociedade com o dono: lucro dividido na proporção (dono 23
   d = C.compute([car({ donoSocio: 0, status: 'Vendido', vvenda: 42000, dvenda: HOJE })], ex, [], SET, HOJE).n;
   near(d.repasse, 23000, 'repasse fixo'); near(d.lucro, 10000, 'comissão inteira');
 });
+
+test('consignado com dono sócio cadastrado direto: entrou por 32 mil, 23 do dono e 9 nossos', () => {
+  const car = (o) => ({ id: 'c', name: 'Civic', dono: 'Felipe', donoSocio: 1, entT: 32000, repasse: 23000, anun: 42000, status: 'Em estoque', ...o });
+  let d = C.compute([car()], [], [], SET, HOJE).c;
+  near(d.entA, 4500, 'metade da nossa parte'); near(d.entB, 4500, 'metade da nossa parte');
+  near(d.custo, 32000, 'custo = parte do dono + nossa'); near(d.proj, 2812.5, 'nosso lucro projetado');
+  d = C.compute([car({ ovrA: 9000, ovrB: 0, status: 'Vendido', vvenda: 42000, dvenda: HOJE })], [], [], SET, HOJE).c;
+  near(d.repasse, 30187.5, 'dono recebe 23.000 + 7.187,50'); near(d.retA, 9000 + 1406.25, 'A: o que pôs + metade do nosso lucro');
+  near(d.retB, 1406.25, 'B: metade do nosso lucro');
+  // gasto depois da entrada entra na nossa parte
+  d = C.compute([car({ status: 'Vendido', vvenda: 42000, dvenda: HOJE })], [{ id: 1, carId: 'c', valor: 1000, quem: 'A' }], [], SET, HOJE).c;
+  near(d.fDono, 23000 / 33000, 'dono: 23 de 33 mil');
+});

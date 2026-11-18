@@ -47,6 +47,19 @@ function maskMoney(el, final) {
     try { el.setSelectionRange(i, i); } catch { /* campo sem seleção */ }
   }
 }
+/** Número inteiro com ponto de milhar enquanto digita (ex.: KM 295000 → 295.000). */
+function maskMilhar(el) {
+  const keep = el.value.slice(0, el.selectionStart || 0).replace(/\D/g, '').length;
+  const d = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  const out = d.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  if (out === el.value) return;
+  el.value = out;
+  if (document.activeElement === el) {
+    let n = 0, i = 0;
+    while (i < out.length && n < keep) { if (/\d/.test(out[i])) n++; i++; }
+    try { el.setSelectionRange(i, i); } catch { /* campo sem seleção */ }
+  }
+}
 let moneyMaskOn = false;
 /** Liga a máscara em todo input com data-money (vale para formulários criados depois). */
 export function installMoneyMask() {
@@ -54,6 +67,7 @@ export function installMoneyMask() {
   moneyMaskOn = true;
   document.addEventListener('input', (ev) => { if (ev.target.matches && ev.target.matches('[data-money]') && ev.inputType !== 'insertCompositionText') maskMoney(ev.target, false); }, true);
   document.addEventListener('focusout', (ev) => { if (ev.target.matches && ev.target.matches('[data-money]')) maskMoney(ev.target, true); }, true);
+  document.addEventListener('input', (ev) => { if (ev.target.matches && ev.target.matches('[data-milhar]') && ev.inputType !== 'insertCompositionText') maskMilhar(ev.target); }, true);
 }
 let toastTimer;
 export function toast(msg) {

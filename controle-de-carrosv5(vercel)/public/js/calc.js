@@ -56,7 +56,8 @@ var Calc = (function () {
   function compute(cars, expenses, planned, settings, today, receipts, payments, repasses) {
     var out = {}, i, id;
     cars.filter(function (c) { return !c.deleted; }).forEach(function (c) {
-      var cs = isConsig(c), e = cs ? { A: 0, B: 0 } : entry(c); // consignado: ninguém pagou pelo carro
+      // consignado: ninguém pagou pelo carro; com o dono sócio, a nossa parte é o valor total menos a parte dele
+      var cs = isConsig(c), e = !cs ? entry(c) : (c.donoSocio && !c.origemId ? entry({ entT: Math.max(0, N0(c.entT) - N0(c.repasse)), ovrA: c.ovrA, ovrB: c.ovrB }) : { A: 0, B: 0 });
       out[c.id] = { c: c, consig: cs, entregue: false, emEspecie: 0, repasse: cs ? N0(c.repasse) : 0, repPago: 0, repPagoA: 0, repPagoB: 0, repasses: [], entA: e.A, entB: e.B, gast: 0, gastA: 0, gastB: 0, prev: 0, troca: 0, kindA: 0, kindB: 0, trocaCars: [], rec: [] };
     });
     expenses.filter(function (x) { return !x.deleted; }).forEach(function (x) {
@@ -104,12 +105,12 @@ var Calc = (function () {
     for (id in out) {
       var d = out[id], c = d.c;
       // Consignado em sociedade com o dono: cada lado tem uma parte do carro (dono = repasse, nós = gastos) e a venda
-      // (lucro ou prejuízo) é dividida nessa proporção. Ex.: dono 23 mil, nós 9 mil, venda 42 mil: o dono recebe 30.187,50.
+      // (lucro ou prejuízo) é dividida nessa proporção. Nossa parte = entrada (valor total − parte do dono) + gastos. Ex.: dono 23 mil, nós 9 mil, venda 42 mil: o dono recebe 30.187,50.
       d.socio = d.consig && !!c.donoSocio && d.repasse > 0;
       d.repDono = d.repasse; d.fDono = 1; d.lucDono = 0;
       if (d.socio) {
         var vs = num(c.vvenda), vend = c.status === 'Vendido' && vs !== null;
-        d.fDono = d.repasse / (d.repasse + d.gast + (vend ? 0 : d.prev));
+        d.fDono = d.repasse / (d.repasse + d.entA + d.entB + d.gast + (vend ? 0 : d.prev));
         if (vend) { d.repasse = r2(vs * d.fDono); d.lucDono = r2(d.repasse - d.repDono); }
       }
       d.custo = d.entA + d.entB + d.repasse + d.gast; // consignado: o repasse ao dono é custo (sai da venda), mas ninguém o investiu

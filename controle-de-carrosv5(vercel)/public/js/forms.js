@@ -13,6 +13,10 @@ const listOpts = (key) => () => LISTS[key].map((o) => [o, o]);
 const isSold = (v) => v.status === 'Vendido';
 const isConsig = (v) => !!String(v.dono || '').trim();
 const notConsig = (v) => !isConsig(v);
+/** Consignado em que o dono é sócio: o carro tem a parte do dono (repasse) e a nossa (valor total − parte do dono). */
+const isSocio = (v) => isConsig(v) && !!v.donoSocio;
+/** Carro em que nós pagamos alguma coisa na entrada: nosso, ou consignado com o dono sócio. */
+const temNossaParte = (v) => notConsig(v) || isSocio(v);
 const notSold = (v) => !isSold(v);
 /** Nome do local e previsão de saída só fazem sentido fora do pátio (oficina, funilaria, despachante...). */
 const temLocal = (v) => !!v.loc && v.loc !== 'Pátio / Loja';
@@ -33,20 +37,20 @@ const F = {
     { lookup: true },
     { k: 'name', label: 'Carro (modelo e versão)', t: 'text', req: true, full: true },
     { k: 'marca', label: 'Montadora', t: 'text', hint: 'Vem da placa ou da tabela FIPE.' }, { k: 'cor', label: 'Cor', t: 'text' },
-    { k: 'km', label: 'KM (quilometragem)', t: 'int', hint: 'Ex.: 85.000' },
+    { k: 'km', label: 'KM (quilometragem)', t: 'int', milhar: true, hint: 'Ex.: 85.000' },
     { k: 'fipe', label: 'Valor FIPE', t: 'money', hint: 'Vem da busca na tabela FIPE ou da placa. Também dá para digitar.' },
     { k: 'fipeRef', label: 'Referência da FIPE', t: 'text', hint: 'Mês da tabela e código FIPE.' },
     { k: 'leilao', label: 'Veio de leilão', t: 'chk' }, { k: 'sinistro', label: 'Tem sinistro', t: 'chk' },
     { k: 'histObs', label: 'Observação de leilão / sinistro', t: 'text', full: true, showIf: temHist, hint: 'Ex.: leilão de financeira, batida leve na traseira, sem dano estrutural.' },
     { g: 'Compra' },
     { k: 'dcompra', label: 'Data da compra', t: 'date', hint: 'Ou de quando o carro chegou.' },
-    { k: 'entT', label: 'Valor da compra', t: 'money', hint: 'Quanto o carro custou. Carro de troca que fica com o dono do consignado: o valor em que entrou na troca.', showIf: (v) => notConsig(v) || !!v.origemId },
     { k: 'dono', label: 'Carro de terceiro? Dono do carro', t: 'text', full: true, hint: 'Deixe vazio se o carro é nosso. Preenchido = consignado: ninguém paga pelo carro, ele só fica aqui para vender.' },
+    { k: 'donoSocio', label: 'O dono é sócio neste carro (lucro proporcional)', t: 'chk', full: true, showIf: isConsig, hint: 'Marque quando vocês também têm dinheiro no carro (ex.: entrou por 32 mil, 23 mil do dono e 9 mil nossos). O lucro da venda é dividido na proporção de cada um.' },
+    { k: 'entT', label: 'Valor da compra', t: 'money', hint: 'Quanto o carro custou. Carro de troca que fica com o dono do consignado: o valor em que entrou na troca.', showIf: (v) => notConsig(v) || !!v.origemId || isSocio(v) },
     { k: 'repasse', label: 'Repasse ao dono (valor mínimo)', t: 'money', full: true, showIf: isConsig, hint: 'Quanto precisa ir para o dono. Os gastos do carro saem do valor da venda e o que sobrar é a comissão.' },
-    { k: 'donoSocio', label: 'O dono é sócio neste carro (lucro proporcional)', t: 'chk', full: true, showIf: isConsig, hint: 'Marque quando vocês também têm dinheiro no carro. O repasse é a parte do dono, os gastos são a parte de vocês, e o lucro da venda é dividido nessa proporção. Ex.: dono com 23 mil e vocês com 9 mil, vendido por 42 mil: o dono recebe R$ 30.187,50 e vocês R$ 11.812,50.' },
     { split: true },
-    { k: 'ovrA', label: `Quanto ${names().A} pagou`, t: 'money', showIf: (v) => notConsig(v) && splitCustom() },
-    { k: 'ovrB', label: `Quanto ${names().B} pagou`, t: 'money', showIf: (v) => notConsig(v) && splitCustom() },
+    { k: 'ovrA', label: `Quanto ${names().A} pagou`, t: 'money', showIf: (v) => temNossaParte(v) && splitCustom() },
+    { k: 'ovrB', label: `Quanto ${names().B} pagou`, t: 'money', showIf: (v) => temNossaParte(v) && splitCustom() },
     { compra: true },
     { k: 'docNome', label: 'Documento em nome de', t: 'sel', opts: () => (LISTS.docNomes || []).map((o) => [o, o === 'Comprador' ? 'Comprador (já transferido)' : o]), blank: 'Não informado', hint: 'Carro comprado e deixado no nome do antigo dono até a venda: escolha "Antigo dono".' },
     { k: 'docPend', label: 'Documentação pendente', t: 'chk' },
@@ -143,6 +147,7 @@ function inputValue(f, v) {
   if (v == null) return '';
   if (f.t === 'money') return moneyField(v);
   if (f.t === 'pct') return String(Math.round(v * 10000) / 100).replace('.', ',');
+  if (f.milhar) return Number(v).toLocaleString('pt-BR');
   return String(v);
 }
 
@@ -157,7 +162,7 @@ function control(f, v, selfId) {
     return h + '</select>';
   }
   if (f.t === 'date') return `<input type="date" id="${id}" value="${esc(val)}">`;
-  const im = f.t === 'money' ? ' inputmode="decimal" data-money placeholder="R$ 0,00"' : f.t === 'pct' ? ' inputmode="decimal"' : f.t === 'int' ? ' inputmode="numeric"' : '';
+  const im = f.t === 'money' ? ' inputmode="decimal" data-money placeholder="R$ 0,00"' : f.t === 'pct' ? ' inputmode="decimal"' : f.t === 'int' ? ` inputmode="numeric"${f.milhar ? ' data-milhar' : ''}` : '';
   const up = f.upper ? ' style="text-transform:uppercase" autocapitalize="characters" spellcheck="false"' : '';
   return `<input type="text" id="${id}" value="${esc(val)}"${im}${up} autocomplete="off">`;
 }
@@ -299,12 +304,16 @@ export function openForm(mode, existing, opts = {}) {
     if (mode === 'receipt') { if (send.status === 'Pendente') send.paidAt = null; else if (!send.paidAt) send.paidAt = today(); }
     if (mode === 'payable') { if (send.status === 'Pendente') send.paidAt = null; else if (!send.paidAt) send.paidAt = today(); }
     if (mode === 'loan' && send.modo === 'Juros mensais' && send.jurosMes == null && send.taxaMes == null) { $('#ferr').textContent = 'Informe os juros por mês, em R$ ou em %.'; return; }
-    if (mode === 'car' && !isConsig(r.vals)) {
+    if (mode === 'car' && isSocio(r.vals) && !origemSel()) {
+      if (!(send.entT > 0)) { $('#ferr').textContent = 'Informe o valor total do carro (a parte do dono + a nossa).'; return; }
+      if (send.repasse != null && send.repasse > send.entT) { $('#ferr').textContent = 'A parte do dono não pode ser maior que o valor total do carro.'; return; }
+    }
+    if (mode === 'car' && temNossaParte(r.vals)) {
       if (!splitCustom()) { send.ovrA = null; send.ovrB = null; } // metade cada
       else {
         // vazio vale zero; com prazo, cada um fica com o que pagou na hora + a parte dele no restante
-        const d = divisaoCompra(), total = numDe('f_entT') || 0, modo = $('#cp_modo') ? $('#cp_modo').value : '';
-        if (!modo && Math.abs(d.pagoA + d.pagoB - total) > 0.004) { $('#ferr').textContent = `A soma do que ${names().A} e ${names().B} pagaram (${brl(d.pagoA + d.pagoB)}) precisa ser igual ao valor da compra (${brl(total)}).`; return; }
+        const d = divisaoCompra(), total = valorNosso(), modo = $('#cp_modo') && !isConsig(r.vals) ? $('#cp_modo').value : '';
+        if (!modo && Math.abs(d.pagoA + d.pagoB - total) > 0.004) { $('#ferr').textContent = `A soma do que ${names().A} e ${names().B} pagaram (${brl(d.pagoA + d.pagoB)}) precisa ser igual ${isConsig(r.vals) ? 'à nossa parte no carro' : 'ao valor da compra'} (${brl(total)}).`; return; }
         send.ovrA = d.A; send.ovrB = d.B;
       }
     }
@@ -449,11 +458,18 @@ const numDe = (id) => { const v = parseMoney(($('#' + id) || {}).value); return 
  * Divisão do carro entre os sócios. Metade cada: cálculo padrão. Outra divisão: vazio vale zero e os valores são o que cada um
  * pagou na hora; com prazo, o restante entra na conta de quem vai pagá-lo ("Quem paga o restante"), e a soma fecha com o valor da compra.
  */
-function divisaoCompra() {
+const origemSel = () => !!($('#f_origemId') && $('#f_origemId').value);
+const socioNaTela = () => !!($('#f_dono') && $('#f_dono').value.trim() && $('#f_donoSocio') && $('#f_donoSocio').checked);
+/** Quanto nós pagamos no carro: o valor da compra; no consignado com o dono sócio, o valor total menos a parte do dono. */
+function valorNosso() {
   const total = numDe('f_entT') || 0;
+  return socioNaTela() ? round2(Math.max(0, total - (numDe('f_repasse') || 0))) : total;
+}
+function divisaoCompra() {
+  const total = valorNosso();
   if (!splitCustom()) return { ...Calc.entry({ entT: total }), pagoA: null, pagoB: null, rest: 0 };
   const pagoA = numDe('f_ovrA') || 0, pagoB = numDe('f_ovrB') || 0;
-  const modo = $('#cp_modo') ? $('#cp_modo').value : '';
+  const modo = $('#cp_modo') && !socioNaTela() ? $('#cp_modo').value : '';
   const rest = modo ? round2(Math.max(0, total - pagoA - pagoB)) : 0;
   const q = $('#cp_quemrest') ? $('#cp_quemrest').value : '';
   const rA = q === 'A' ? rest : q === 'B' ? 0 : q === 'custom' ? (numDe('cp_restA') || 0) : round2(rest / 2);
@@ -500,10 +516,18 @@ function compraParts() {
   return { ent, parts };
 }
 /** Mostra só os campos da forma escolhida e escreve o resumo da compra numa frase. */
+const pctTxt = (f) => (Math.round(f * 1000) / 10).toLocaleString('pt-BR') + '%';
 function compraRefresh(cur) {
-  const consig = isConsig(cur), custom = splitCustom();
+  const consig = isConsig(cur), custom = splitCustom(), socio = isSocio(cur);
   const sf = $('#cp_splitf');
-  if (sf) sf.hidden = consig;
+  if (sf) { sf.hidden = consig && !socio; const l = sf.querySelector('label'); if (l) l.textContent = socio ? 'Quem pagou a nossa parte' : 'Quem pagou o carro'; }
+  const le = $('label[for="f_entT"]'), lr = $('label[for="f_repasse"]');
+  if (le) le.textContent = socio && !cur.origemId ? 'Valor total do carro (dono + nós)' : 'Valor da compra';
+  const he = le && le.parentElement.querySelector('.hint');
+  if (he) he.textContent = socio && !cur.origemId ? 'Quanto o carro vale na entrada, somando a parte do dono e a nossa (ex.: 32 mil).' : 'Quanto o carro custou. Carro de troca que fica com o dono do consignado: o valor em que entrou na troca.';
+  if (lr) lr.textContent = socio ? 'Parte do dono no carro' : 'Repasse ao dono (valor mínimo)';
+  const hr = lr && lr.parentElement.querySelector('.hint');
+  if (hr) hr.textContent = socio ? 'Quanto do valor total é do dono (ex.: 23 mil). Na venda ele recebe isso mais a parte dele no lucro.' : 'Quanto precisa ir para o dono. Os gastos do carro saem do valor da venda e o que sobrar é a comissão.';
   document.querySelectorAll('[data-cpbox]').forEach((el) => { el.hidden = consig; el.classList.toggle('row-start', custom); });
   const oa = document.querySelector('.field[data-k="ovrA"]');
   if (oa) oa.classList.add('row-start'); // os valores dos dois sócios ficam lado a lado
@@ -527,7 +551,17 @@ function compraRefresh(cur) {
   if (lB) lB.textContent = modo ? `Quanto ${names().B} pagou na hora` : `Quanto ${names().B} pagou`;
   const prev = $('#cp_prev');
   if (!prev) return;
-  prev.hidden = consig;
+  prev.hidden = consig && !socio;
+  if (socio) {
+    const tot = numDe('f_entT') || 0, dono = numDe('f_repasse') || 0, nos = valorNosso();
+    if (!(tot > 0) || cur.origemId) { prev.textContent = ''; return; }
+    const e = divisaoCompra();
+    let t = `Nossa parte: <b>${brl(nos)}</b> (${esc(names().A)} ${brl(e.A)} e ${esc(names().B)} ${brl(e.B)}).`;
+    if (tot > 0 && dono > 0) t += ` O lucro da venda fica ${pctTxt(dono / tot)} com ${esc(cur.dono.trim())} e ${pctTxt(nos / tot)} com vocês.`;
+    if (dono > tot) t += ' <span class="neg">A parte do dono passa do valor total.</span>';
+    if (custom && Math.abs(e.pagoA + e.pagoB - nos) > 0.004) t += ` <span class="neg">A soma (${brl(e.pagoA + e.pagoB)}) não bate com a nossa parte (${brl(nos)}).</span>`;
+    prev.innerHTML = t; return;
+  }
   const total = numDe('f_entT');
   if (consig || !(total > 0)) { prev.textContent = ''; return; }
   const e = divisaoCompra();
@@ -565,7 +599,7 @@ function vendaHtml(existing) {
     <div class="field row-start" data-vd="troca"><label for="vd_placa">Placa do carro da troca</label><input type="text" id="vd_placa" style="text-transform:uppercase" autocapitalize="characters" spellcheck="false" autocomplete="off"><span class="hint" id="vd_plres">Com a placa completa, modelo e ano vêm sozinhos.</span></div>
     <div class="field" data-vd="troca"><label for="vd_nome">Carro da troca</label><input type="text" id="vd_nome" autocomplete="off" placeholder="Ex.: VW Gol 1.0"></div>
     <div class="field" data-vd="troca"><label for="vd_ano">Ano</label><input type="text" id="vd_ano" inputmode="numeric"></div>
-    <div class="field" data-vd="troca"><label for="vd_km">KM</label><input type="text" id="vd_km" inputmode="numeric" placeholder="Ex.: 85.000"></div>
+    <div class="field" data-vd="troca"><label for="vd_km">KM</label><input type="text" id="vd_km" inputmode="numeric" data-milhar placeholder="Ex.: 85.000"></div>
     <div class="field" data-vd="troca"><label for="vd_valor">Valor em que pegamos o carro</label><input type="text" id="vd_valor" inputmode="decimal" data-money placeholder="R$ 0,00"></div>`;
   if (temRec) h += `<div class="field full" data-vdbox><label>Como recebemos</label><span class="hint">Recebimento já programado. <button type="button" class="linkbtn" data-act="receipts" data-id="${existing.id}">Ver recebimentos</button></span></div>`;
   else h += `<div class="field row-start" data-vdbox><label for="vd_modo">Como recebemos o dinheiro</label><select id="vd_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option><option value="livre">Personalizado</option></select></div>
