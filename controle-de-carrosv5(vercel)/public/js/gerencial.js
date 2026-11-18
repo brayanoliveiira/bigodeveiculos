@@ -18,7 +18,18 @@ function perText() {
   if (!p.from && !p.to) return 'todo o período';
   return `${p.from ? dmy(p.from) : 'início'} a ${p.to ? dmy(p.to) : 'hoje'}`;
 }
-const K = (t, v, cls, hero) => `<div class="kpi${hero ? ' hero' : ''}"><dt>${esc(t)}</dt><dd class="${cls || ''}">${v}</dd></div>`;
+/** Número com atalho: go = 'ranking' (relatório), 'ranking:prej' (relatório com filtro), '#emprestimos' (outra aba) ou 'car:ID' (ficha do carro). */
+const linkAttrs = (go, t) => {
+  if (!go) return '';
+  const lbl = ` role="button" tabindex="0" title="Ver detalhes" aria-label="${esc(t)}: ver detalhes"`;
+  if (go.startsWith('#')) return ` data-go="${esc(go.slice(1))}"${lbl}`;
+  if (go.startsWith('car:')) return ` data-act="car-ficha" data-id="${esc(go.slice(4))}"${lbl}`;
+  const i = go.indexOf(':'), rep = i < 0 ? go : go.slice(0, i), f = i < 0 ? '' : go.slice(i + 1);
+  return ` data-act="ger-go" data-id="${esc(rep)}"${f ? ` data-f="${esc(f)}"` : ''}${lbl}`;
+};
+const K = (t, v, cls, hero, go) => `<div class="kpi${hero ? ' hero' : ''}${go ? ' link' : ''}"${linkAttrs(go, t)}><dt>${esc(t)}</dt><dd class="${cls || ''}">${v}</dd></div>`;
+/** Nome do carro que abre a ficha completa dele. */
+const carLink = (r, extra) => `<button type="button" class="linkbtn" data-act="car-ficha" data-id="${r.carId}" title="Ver o carro"><b>${esc(r.car)}</b></button>${extra || ''}`;
 const kpis = (arr) => `<dl class="grid kpis" style="margin:0">${arr.join('')}</dl>`;
 const val = (v, cls) => `<span class="${cls || sign(v)}">${brl(v)}</span>`;
 function panel(title, body, csv, note) {
@@ -61,12 +72,12 @@ R.geral = (D) => {
   const p = per(), J = jurosDe(p), v = Reports.visaoGeral(D, S.expenses, today(), S.settings, p.from, p.to, J);
   const soc = Reports.porSocio(D, S.expenses, p.from, p.to, J), lm = Reports.lucroMensal(D, p.from, p.to, J);
   let h = `<p class="mut small" style="margin:0">Vendas e gastos de ${esc(perText())}. Estoque e recebíveis são a situação de hoje.</p>`;
-  h += kpis([...(v.juros ? [K('Lucro líquido (após juros)', brl(v.lucroLiq), sign(v.lucroLiq), true), K('Juros de empréstimos pagos', brl(v.juros), 'neg')] : []), K('Lucro das vendas', brl(v.lucro), '', !v.juros), K('Vendas', String(v.vendas)), K('Faturamento (inclui trocas)', brl(v.fat)), K('Margem sobre o custo', pct(v.margem)),
-    K('Ticket médio', brl(v.ticket)), K('Lucro médio por carro', brl(v.lucroMedio), sign(v.lucroMedio)), K('Dias médios para vender', v.diasMedio == null ? '—' : Math.round(v.diasMedio) + ' dias'), K('Deixou de ganhar (descontos)', brl(v.perdeu)),
-    K('Capital em estoque', brl(v.capitalEstoque)), K('Lucro projetado do estoque', brl(v.projEstoque), sign(v.projEstoque)), K('A receber de clientes', brl(v.aReceber)), K('Atrasado', brl(v.atrasado), v.atrasado > 0 ? 'neg' : ''),
-    K('Gastos no período', brl(v.gastos)), K('Vendas com prejuízo', String(v.prejuizo), v.prejuizo ? 'neg' : '')]);
+  h += kpis([...(v.juros ? [K('Lucro líquido (após juros)', brl(v.lucroLiq), sign(v.lucroLiq), true, 'lucro'), K('Juros de empréstimos pagos', brl(v.juros), 'neg', false, '#emprestimos')] : []), K('Lucro das vendas', brl(v.lucro), '', !v.juros, 'ranking'), K('Vendas', String(v.vendas), '', false, 'ranking'), K('Faturamento (inclui trocas)', brl(v.fat), '', false, 'ranking'), K('Margem sobre o custo', pct(v.margem), '', false, 'ranking'),
+    K('Ticket médio', brl(v.ticket), '', false, 'ranking'), K('Lucro médio por carro', brl(v.lucroMedio), sign(v.lucroMedio), false, 'ranking'), K('Dias médios para vender', v.diasMedio == null ? '—' : Math.round(v.diasMedio) + ' dias', '', false, 'ranking'), K('Deixou de ganhar (descontos)', brl(v.perdeu), '', false, 'ranking:desc'),
+    K('Capital em estoque', brl(v.capitalEstoque), '', false, 'estoque'), K('Lucro projetado do estoque', brl(v.projEstoque), sign(v.projEstoque), false, 'estoque'), K('A receber de clientes', brl(v.aReceber), '', false, 'caixa'), K('Atrasado', brl(v.atrasado), v.atrasado > 0 ? 'neg' : '', false, 'caixa'),
+    K('Gastos no período', brl(v.gastos), '', false, 'gastos'), K('Vendas com prejuízo', String(v.prejuizo), v.prejuizo ? 'neg' : '', false, 'ranking:prej')]);
   const sociosCols = [
-    { label: 'Sócio', get: (r) => esc(r.nome) }, { label: 'Investido em estoque', r: true, get: (r) => brl(r.est) }, { label: 'Investido nos vendidos', r: true, get: (r) => brl(r.vend) },
+    { label: 'Sócio', get: (r) => `<button type="button" class="linkbtn" data-act="ger-go" data-id="socios"><b>${esc(r.nome)}</b></button>` }, { label: 'Investido em estoque', r: true, get: (r) => brl(r.est) }, { label: 'Investido nos vendidos', r: true, get: (r) => brl(r.vend) },
     { label: 'Lucro líquido no período', r: true, get: (r) => val(r.luc) }, { label: 'Saldo a acertar', r: true, get: (r) => val(r.saldo) }];
   const rows = ['A', 'B'].map((c) => ({ nome: nm(c), est: soc[c].estoque.inv, vend: soc[c].vendidos.inv, luc: soc[c].vendidos.lucLiq, saldo: soc[c].saldo }));
   h += panel('Resumo por sócio', table(sociosCols, rows), null);
@@ -93,10 +104,10 @@ R.socios = (D) => {
   const fmt = (v, isPct) => (v == null ? '—' : isPct ? pct(v) : brl(v));
   const cols = [{ label: 'Indicador', get: (r) => esc(r.l.trim()) + (r.l.startsWith('  ') ? '' : '') }, { label: nm('A'), r: true, get: (r) => fmt(r.a, r.isPct) }, { label: nm('B'), r: true, get: (r) => fmt(r.b, r.isPct) }, { label: 'Total', r: true, get: (r) => fmt(r.t, r.isPct) }];
   let h = `<p class="mut small" style="margin:0">Vendas de ${esc(perText())}. O investido em estoque é a situação de hoje.</p>`;
-  h += kpis([K(`Investido por ${nm('A')}`, brl(A.totalInvestido), '', true), K(`Investido por ${nm('B')}`, brl(B.totalInvestido), '', true), K(`Em estoque (${nm('A')})`, brl(A.estoque.inv)), K(`Em estoque (${nm('B')})`, brl(B.estoque.inv)),
-    K(`Lucro líquido de ${nm('A')}`, brl(A.vendidos.lucLiq), sign(A.vendidos.lucLiq)), K(`Lucro líquido de ${nm('B')}`, brl(B.vendidos.lucLiq), sign(B.vendidos.lucLiq))]);
+  h += kpis([K(`Investido por ${nm('A')}`, brl(A.totalInvestido), '', true), K(`Investido por ${nm('B')}`, brl(B.totalInvestido), '', true), K(`Em estoque (${nm('A')})`, brl(A.estoque.inv), '', false, 'estoque'), K(`Em estoque (${nm('B')})`, brl(B.estoque.inv), '', false, 'estoque'),
+    K(`Lucro líquido de ${nm('A')}`, brl(A.vendidos.lucLiq), sign(A.vendidos.lucLiq), false, 'ranking'), K(`Lucro líquido de ${nm('B')}`, brl(B.vendidos.lucLiq), sign(B.vendidos.lucLiq), false, 'ranking')]);
   h += panel('Por sócio', table(cols, rows), { name: 'socios', cols: [{ k: 'l', label: 'Indicador' }, { k: 'a', label: nm('A') }, { k: 'b', label: nm('B') }, { k: 't', label: 'Total' }], rows: rows.map((r) => ({ l: r.l.trim(), a: r.a, b: r.b, t: r.t })) });
-  const carCols = [{ label: 'Carro', get: (r) => esc(r.car) }, { label: 'Dias', r: true, get: (r) => (r.dias == null ? '—' : r.dias) }, { label: `Investido por ${nm('A')}`, r: true, get: (r) => brl(r.invA) }, { label: `Investido por ${nm('B')}`, r: true, get: (r) => brl(r.invB) }, { label: 'Custo total', r: true, get: (r) => brl(r.custo) }];
+  const carCols = [{ label: 'Carro', get: (r) => carLink(r) }, { label: 'Dias', r: true, get: (r) => (r.dias == null ? '—' : r.dias) }, { label: `Investido por ${nm('A')}`, r: true, get: (r) => brl(r.invA) }, { label: `Investido por ${nm('B')}`, r: true, get: (r) => brl(r.invB) }, { label: 'Custo total', r: true, get: (r) => brl(r.custo) }];
   h += panel('Capital investido em cada carro do estoque', table(carCols, est.rows, { Carro: 'Total', [`Investido por ${nm('A')}`]: brl(est.total.A), [`Investido por ${nm('B')}`]: brl(est.total.B), 'Custo total': brl(est.total.custo) }),
     { name: 'capital-estoque', cols: [{ k: 'car', label: 'Carro' }, { k: 'dias', label: 'Dias' }, { k: 'invA', label: `Investido por ${nm('A')}` }, { k: 'invB', label: `Investido por ${nm('B')}` }, { k: 'custo', label: 'Custo total' }], rows: est.rows },
     'Vale antes mesmo de vender: é o que cada sócio já colocou em cada carro (entrada + gastos que pagou).');
@@ -106,7 +117,7 @@ R.socios = (D) => {
 R.lucro = (D) => {
   const p = per(), lm = Reports.lucroMensal(D, p.from, p.to, jurosDe(p));
   const cols = [
-    { label: 'Mês', get: (r) => esc(mlabel(r.mes)) }, { label: 'Vendas', r: true, get: (r) => r.n }, { label: 'Faturamento', r: true, get: (r) => brl(r.fat) }, { label: 'Custo', r: true, get: (r) => brl(r.custo) },
+    { label: 'Mês', get: (r) => (r.n ? `<button type="button" class="linkbtn" data-act="ger-go" data-id="ranking" data-f="m:${esc(r.mes)}" title="Ver os carros vendidos neste mês"><b>${esc(mlabel(r.mes))}</b></button>` : esc(mlabel(r.mes))) }, { label: 'Vendas', r: true, get: (r) => r.n }, { label: 'Faturamento', r: true, get: (r) => brl(r.fat) }, { label: 'Custo', r: true, get: (r) => brl(r.custo) },
     { label: 'Lucro dos carros', r: true, get: (r) => val(r.lucro) }, { label: 'Juros pagos', r: true, get: (r) => (r.juros ? val(-r.juros) : '—') }, { label: 'Lucro líquido', r: true, get: (r) => val(r.liq) },
     { label: `Líquido ${nm('A')}`, r: true, get: (r) => val(r.liqA) }, { label: `Líquido ${nm('B')}`, r: true, get: (r) => val(r.liqB) }, { label: 'Margem', r: true, get: (r) => pct(r.margem) }];
   const t = lm.total;
@@ -121,7 +132,7 @@ R.lucro = (D) => {
 R.caixa = (D) => {
   const p = per(), rec = Reports.recebiveis(D, today()), cx = Reports.caixaMensal(D, today(), p.from, p.to);
   let h = `<p class="mut small" style="margin:0">Caixa: dinheiro que entrou por mês (recebido) e o que deve entrar (previsto, pela data de vencimento) em ${esc(perText())}. Os recebíveis em aberto são a situação de hoje, qualquer que seja o período.</p>`;
-  h += kpis([K('A receber de clientes', brl(rec.total + rec.semProgramar), '', true), K('Atrasado', brl(rec.atrasado), rec.atrasado > 0 ? 'neg' : ''), K(`A receber — ${nm('A')}`, brl(rec.A)), K(`A receber — ${nm('B')}`, brl(rec.B)),
+  h += kpis([K('A receber de clientes', brl(rec.total + rec.semProgramar), '', true, '#vendas'), K('Atrasado', brl(rec.atrasado), rec.atrasado > 0 ? 'neg' : '', false, '#vendas'), K(`A receber — ${nm('A')}`, brl(rec.A)), K(`A receber — ${nm('B')}`, brl(rec.B)),
     K('Sem programar', brl(rec.semProgramar), rec.semProgramar > 0 ? 'neg' : ''), K('Recebido no período', brl(cx.total.recebido))]);
   h += panel('Recebido x previsto por mês', legend([['sw-r', 'Recebido'], ['sw-p', 'Previsto (a receber)']]) + groupedChart(cx.rows, [{ k: 'recebido', cls: 'ba', label: 'Recebido' }, { k: 'previsto', cls: 'bd', label: 'Previsto' }], 'Recebido e previsto por mês'));
   const cols = [{ label: 'Mês', get: (r) => esc(mlabel(r.mes)) }, { label: 'Recebido', r: true, get: (r) => brl(r.recebido) }, { label: nm('A'), r: true, get: (r) => brl(r.recA) }, { label: nm('B'), r: true, get: (r) => brl(r.recB) },
@@ -132,11 +143,11 @@ R.caixa = (D) => {
   const fc = [{ label: 'Vencimento', get: (r) => esc(r.nome) }, { label: 'Parcelas', r: true, get: (r) => r.n }, { label: 'Valor', r: true, get: (r) => brl(r.valor) }, { label: nm('A'), r: true, get: (r) => brl(r.A) }, { label: nm('B'), r: true, get: (r) => brl(r.B) }];
   h += panel('A receber por faixa de vencimento', table(fc, rec.faixas, { Vencimento: 'Total', Parcelas: rec.items.length, Valor: brl(rec.total), [nm('A')]: brl(rec.A), [nm('B')]: brl(rec.B) }),
     { name: 'recebiveis-faixas', cols: [{ k: 'nome', label: 'Vencimento' }, { k: 'n', label: 'Parcelas' }, { k: 'valor', label: 'Valor' }, { k: 'A', label: nm('A') }, { k: 'B', label: nm('B') }], rows: rec.faixas });
-  const cc = [{ label: 'Carro', get: (r) => `<b>${esc(r.car)}</b><div class="mut small">${esc(r.comprador)}</div>` }, { label: 'Forma', get: (r) => esc(r.forma || '') }, { label: 'Dinheiro da venda', r: true, get: (r) => brl(r.cash) },
+  const cc = [{ label: 'Carro', get: (r) => carLink(r, `<div class="mut small">${esc(r.comprador)}</div>`) }, { label: 'Forma', get: (r) => esc(r.forma || '') }, { label: 'Dinheiro da venda', r: true, get: (r) => brl(r.cash) },
     { label: 'Recebido', r: true, get: (r) => brl(r.recebido) }, { label: 'A receber', r: true, get: (r) => brl(r.aReceber) }, { label: 'Atrasado', r: true, get: (r) => (r.atrasado > 0 ? `<span class="neg">${brl(r.atrasado)}</span>` : '—') },
     { label: 'Próx. venc.', get: (r) => (r.prox ? dmy(r.prox) : '—') }, { label: 'Parcelas', r: true, get: (r) => r.nParc || '—' }];
   h += panel('Vendas com valor em aberto', table(cc, rec.porCarro, null, 'Nenhuma venda com valor a receber.'), { name: 'vendas-em-aberto', cols: [{ k: 'car', label: 'Carro' }, { k: 'comprador', label: 'Comprador' }, { k: 'forma', label: 'Forma' }, { k: 'cash', label: 'Dinheiro da venda' }, { k: 'recebido', label: 'Recebido' }, { k: 'aReceber', label: 'A receber' }, { k: 'atrasado', label: 'Atrasado' }, { k: 'prox', label: 'Próx. venc.', date: true }], rows: rec.porCarro });
-  const pc = [{ label: 'Vencimento', get: (r) => dmy(r.due) }, { label: 'Carro', get: (r) => esc(r.car) }, { label: 'Comprador', get: (r) => esc(r.comprador) }, { label: 'Parcela', get: (r) => esc(r.label) }, { label: 'Valor', r: true, get: (r) => brl(r.valor) },
+  const pc = [{ label: 'Vencimento', get: (r) => dmy(r.due) }, { label: 'Carro', get: (r) => carLink(r) }, { label: 'Comprador', get: (r) => esc(r.comprador) }, { label: 'Parcela', get: (r) => esc(r.label) }, { label: 'Valor', r: true, get: (r) => brl(r.valor) },
     { label: nm('A'), r: true, get: (r) => brl(r.A) }, { label: nm('B'), r: true, get: (r) => brl(r.B) }, { label: 'Situação', get: (r) => (r.atraso ? `<span class="pill late">${r.atraso} dia${r.atraso === 1 ? '' : 's'} de atraso</span>` : r.dias === 0 ? '<span class="pill soon">Vence hoje</span>' : `em ${r.dias} dias`) }];
   h += panel('Agenda de recebimentos (parcelas em aberto)', table(pc, rec.items, null, 'Nenhuma parcela em aberto.'), { name: 'agenda-recebimentos', cols: [{ k: 'due', label: 'Vencimento', date: true }, { k: 'car', label: 'Carro' }, { k: 'comprador', label: 'Comprador' }, { k: 'label', label: 'Parcela' }, { k: 'valor', label: 'Valor' }, { k: 'A', label: nm('A') }, { k: 'B', label: nm('B') }, { k: 'atraso', label: 'Dias de atraso' }], rows: rec.items });
   return { html: `<div class="stack">${h}</div>` };
@@ -144,7 +155,7 @@ R.caixa = (D) => {
 
 R.vendas = (D) => {
   const p = per(), v = Reports.vendasPorForma(D, p.from, p.to);
-  const cols = [{ label: 'Forma de pagamento', get: (r) => `<b>${esc(r.forma)}</b>` }, { label: 'Vendas', r: true, get: (r) => r.n }, { label: 'Participação', r: true, get: (r) => pct(r.share) }, { label: 'Faturamento', r: true, get: (r) => brl(r.fat) },
+  const cols = [{ label: 'Forma de pagamento', get: (r) => `<button type="button" class="linkbtn" data-act="ger-go" data-id="ranking" data-f="f:${esc(r.forma)}" title="Ver os carros vendidos assim"><b>${esc(r.forma)}</b></button>` }, { label: 'Vendas', r: true, get: (r) => r.n }, { label: 'Participação', r: true, get: (r) => pct(r.share) }, { label: 'Faturamento', r: true, get: (r) => brl(r.fat) },
     { label: 'Ticket médio', r: true, get: (r) => brl(r.ticket) }, { label: 'Lucro', r: true, get: (r) => val(r.lucro) }, { label: 'Margem', r: true, get: (r) => pct(r.margem) }, { label: 'Prazo médio', r: true, get: (r) => (r.prazoMedio > 0 ? Math.round(r.prazoMedio) + ' dias' : 'na hora') }, { label: 'Parcelas (média)', r: true, get: (r) => (r.parcelasMedia > 0 ? r.parcelasMedia.toFixed(1).replace('.', ',') : '—') }];
   let h = `<p class="mut small" style="margin:0">Vendas de ${esc(perText())}. "Troca" = recebeu carro de cliente como parte do pagamento; o restante em dinheiro aparece como à vista, a prazo ou parcelado.</p>`;
   h += kpis([K('Vendas', String(v.total.n), '', true), K('Faturamento', brl(v.total.fat)), K('Vendas com carro na troca', `${v.trocas.n} (${pct(v.trocas.share)})`), K('Valor recebido em carros de troca', brl(v.trocas.valor))]);
@@ -156,10 +167,10 @@ R.vendas = (D) => {
 R.estoque = (D) => {
   const e = Reports.estoque(D, S.settings);
   const fc = [{ label: 'Tempo em estoque', get: (r) => esc(r.nome) }, { label: 'Carros', r: true, get: (r) => r.n }, { label: nm('A'), r: true, get: (r) => brl(r.A) }, { label: nm('B'), r: true, get: (r) => brl(r.B) }, { label: 'Capital parado', r: true, get: (r) => brl(r.custo) }];
-  let h = kpis([K('Carros em estoque', String(e.total.n), '', true), K('Capital parado', brl(e.total.custo)), K(`Investido por ${nm('A')}`, brl(e.total.A)), K(`Investido por ${nm('B')}`, brl(e.total.B)), K('Gastos previstos pendentes', brl(e.total.prev)), K('Lucro projetado', brl(e.total.proj), sign(e.total.proj))]);
+  let h = kpis([K('Carros em estoque', String(e.total.n), '', true, '#carros'), K('Capital parado', brl(e.total.custo)), K(`Investido por ${nm('A')}`, brl(e.total.A)), K(`Investido por ${nm('B')}`, brl(e.total.B)), K('Gastos previstos pendentes', brl(e.total.prev)), K('Lucro projetado', brl(e.total.proj), sign(e.total.proj))]);
   h += panel('Envelhecimento do estoque', table(fc, e.faixas, { 'Tempo em estoque': 'Total', Carros: e.total.n, [nm('A')]: brl(e.total.A), [nm('B')]: brl(e.total.B), 'Capital parado': brl(e.total.custo) }),
     { name: 'estoque-idade', cols: [{ k: 'nome', label: 'Tempo em estoque' }, { k: 'n', label: 'Carros' }, { k: 'A', label: nm('A') }, { k: 'B', label: nm('B') }, { k: 'custo', label: 'Capital parado' }], rows: e.faixas });
-  const cc = [{ label: 'Carro', get: (r) => `<b>${esc(r.car)}</b>${r.parado ? ' <span class="pill late">Parado</span>' : ''}<div class="mut small">${esc(r.placa)}</div>` }, { label: 'Status', get: (r) => esc(r.status) }, { label: 'Onde está', get: (r) => esc(r.loc || '—') }, { label: 'Dias', r: true, get: (r) => (r.dias == null ? '—' : r.dias) },
+  const cc = [{ label: 'Carro', get: (r) => carLink(r, `${r.parado ? ' <span class="pill late">Parado</span>' : ''}<div class="mut small">${esc(r.placa)}</div>`) }, { label: 'Status', get: (r) => esc(r.status) }, { label: 'Onde está', get: (r) => esc(r.loc || '—') }, { label: 'Dias', r: true, get: (r) => (r.dias == null ? '—' : r.dias) },
     { label: `Invest. ${nm('A')}`, r: true, get: (r) => brl(r.invA) }, { label: `Invest. ${nm('B')}`, r: true, get: (r) => brl(r.invB) }, { label: 'Custo', r: true, get: (r) => brl(r.custo) }, { label: 'Previstos', r: true, get: (r) => brl(r.prev) },
     { label: 'Preço mínimo', r: true, get: (r) => brl(r.pmin) }, { label: 'Anúncio', r: true, get: (r) => (r.anun ? brl(r.anun) : '—') }, { label: 'Lucro projetado', r: true, get: (r) => val(r.proj) }];
   h += panel('Carros em estoque', table(cc, e.rows), { name: 'estoque', cols: [{ k: 'car', label: 'Carro' }, { k: 'placa', label: 'Placa' }, { k: 'status', label: 'Status' }, { k: 'loc', label: 'Onde está' }, { k: 'dias', label: 'Dias' }, { k: 'invA', label: `Investido ${nm('A')}` }, { k: 'invB', label: `Investido ${nm('B')}` }, { k: 'custo', label: 'Custo' }, { k: 'prev', label: 'Previstos' }, { k: 'pmin', label: 'Preço mínimo' }, { k: 'anun', label: 'Anúncio' }, { k: 'proj', label: 'Lucro projetado' }], rows: e.rows });
@@ -169,10 +180,10 @@ R.estoque = (D) => {
 R.consig = (D) => {
   const c = Reports.consignados(D, today()), t = c.total;
   let h = `<p class="mut small" style="margin:0">Carros de terceiros que a gente vende. O dono recebe o repasse combinado; os gastos do carro saem do valor da venda e o que sobra é a comissão, dividida entre os sócios conforme a divisão do carro.</p>`;
-  h += kpis([K('Carros consignados', String(t.n), '', true), K('Comissão (vendidos)', brl(t.comissao), sign(t.comissao)), K(`Comissão de ${nm('A')}`, brl(t.comA), sign(t.comA)), K(`Comissão de ${nm('B')}`, brl(t.comB), sign(t.comB)),
-    K('Repasse combinado (vendidos)', brl(t.repasse)), K('Ainda a repassar', brl(t.falta), t.falta > 0.004 ? 'neg' : '')]);
+  h += kpis([K('Carros consignados', String(t.n), '', true, '#consignados'), K('Comissão (vendidos)', brl(t.comissao), sign(t.comissao)), K(`Comissão de ${nm('A')}`, brl(t.comA), sign(t.comA)), K(`Comissão de ${nm('B')}`, brl(t.comB), sign(t.comB)),
+    K('Repasse combinado (vendidos)', brl(t.repasse)), K('Ainda a repassar', brl(t.falta), t.falta > 0.004 ? 'neg' : '', false, '#consignados')]);
   const cols = [
-    { label: 'Carro', get: (r) => `<b>${esc(r.car)}</b><div class="mut small">${esc(r.placa)} · dono: ${esc(r.dono)}</div>` },
+    { label: 'Carro', get: (r) => carLink(r, `<div class="mut small">${esc(r.placa)}${r.placa ? ', ' : ''}dono: ${esc(r.dono)}</div>`) },
     { label: 'Status', get: (r) => esc(r.status) },
     { label: 'Dono recebe', r: true, get: (r) => (r.vendido ? `${brl(r.donoRecebe)}${r.donoLucro ? `<div class="small ${r.donoLucro < 0 ? 'neg' : 'pos'}">${brl(r.donoLucro)} de lucro</div>` : ''}` : `<span class="mut">${brl(r.donoParte)} fixo${r.donoLucroPrev ? ` + ${brl(r.donoLucroPrev)} projetado` : ''}</span>`) },
     { label: 'Repassado', r: true, get: (r) => brl(r.repassado) },
@@ -200,25 +211,35 @@ R.consig = (D) => {
 R.gastos = (D) => {
   const p = per(), g = Reports.gastos(D, S.expenses, p.from, p.to);
   let h = `<p class="mut small" style="margin:0">Gastos lançados em ${esc(perText())}.</p>`;
-  h += kpis([K('Total gasto', brl(g.total), '', true), K(`Pago por ${nm('A')}`, brl(g.A)), K(`Pago por ${nm('B')}`, brl(g.B)), K('Lançamentos', String(g.n)), K('Média por carro', brl(g.porCarro))]);
+  h += kpis([K('Total gasto', brl(g.total), '', true, '#gastos'), K(`Pago por ${nm('A')}`, brl(g.A)), K(`Pago por ${nm('B')}`, brl(g.B)), K('Lançamentos', String(g.n)), K('Média por carro', brl(g.porCarro))]);
   const cc = [{ label: 'Categoria', get: (r) => esc(r.cat) }, { label: 'Lançamentos', r: true, get: (r) => r.n }, { label: 'Total', r: true, get: (r) => brl(r.total) }, { label: '%', r: true, get: (r) => pct(r.share) }, { label: nm('A'), r: true, get: (r) => brl(r.A) }, { label: nm('B'), r: true, get: (r) => brl(r.B) }];
   h += panel('Por categoria', table(cc, g.cats, { Categoria: 'Total', Lançamentos: g.n, Total: brl(g.total), [nm('A')]: brl(g.A), [nm('B')]: brl(g.B) }), { name: 'gastos-categoria', cols: [{ k: 'cat', label: 'Categoria' }, { k: 'n', label: 'Lançamentos' }, { k: 'total', label: 'Total' }, { k: 'share', label: '%' }, { k: 'A', label: nm('A') }, { k: 'B', label: nm('B') }], rows: g.cats });
   const mc = [{ label: 'Mês', get: (r) => esc(mlabel(r.mes)) }, { label: 'Total', r: true, get: (r) => brl(r.total) }, { label: nm('A'), r: true, get: (r) => brl(r.A) }, { label: nm('B'), r: true, get: (r) => brl(r.B) }];
   h += panel('Por mês', legend([['sw-a', nm('A')], ['sw-b', nm('B')]]) + groupedChart(g.meses, [{ k: 'A', cls: 'ba', label: nm('A') }, { k: 'B', cls: 'bb', label: nm('B') }], 'Gastos por mês e por sócio') + table(mc, g.meses),
     { name: 'gastos-mes', cols: [{ k: 'mes', label: 'Mês' }, { k: 'total', label: 'Total' }, { k: 'A', label: nm('A') }, { k: 'B', label: nm('B') }], rows: g.meses });
-  const vc = [{ label: 'Carro', get: (r) => esc(r.car) }, { label: 'Lançamentos', r: true, get: (r) => r.n }, { label: 'Total gasto', r: true, get: (r) => brl(r.total) }];
+  const vc = [{ label: 'Carro', get: (r) => carLink(r) }, { label: 'Lançamentos', r: true, get: (r) => r.n }, { label: 'Total gasto', r: true, get: (r) => brl(r.total) }];
   h += panel('Carros que mais gastaram', table(vc, g.cars.slice(0, 15)), { name: 'gastos-carros', cols: [{ k: 'car', label: 'Carro' }, { k: 'n', label: 'Lançamentos' }, { k: 'total', label: 'Total gasto' }], rows: g.cars });
   return { html: `<div class="stack">${h}</div>` };
 };
 
 R.ranking = (D) => {
   const p = per(), r = Reports.ranking(D, p.from, p.to);
-  const cols = [{ label: 'Carro', get: (x) => `<b>${esc(x.car)}</b><div class="mut small">${esc(x.placa)}${x.comprador ? ' · ' + esc(x.comprador) : ''}</div>` }, { label: 'Venda em', get: (x) => dmy(x.dvenda) }, { label: 'Forma', get: (x) => esc(x.forma || '') },
+  const cols = [{ label: 'Carro', get: (x) => carLink(x, `<div class="mut small">${esc([x.placa, x.comprador].filter(Boolean).join(', '))}</div>`) }, { label: 'Venda em', get: (x) => dmy(x.dvenda) }, { label: 'Forma', get: (x) => esc(x.forma || '') },
     { label: 'Dias', r: true, get: (x) => (x.dias == null ? '—' : x.dias) }, { label: 'Custo', r: true, get: (x) => brl(x.custo) }, { label: 'Venda', r: true, get: (x) => brl(x.vvenda) }, { label: 'Lucro', r: true, get: (x) => val(x.lucro) },
     { label: 'Margem', r: true, get: (x) => pct(x.margem) }, { label: `Lucro ${nm('A')}`, r: true, get: (x) => val(x.lucA) }, { label: `Lucro ${nm('B')}`, r: true, get: (x) => val(x.lucB) }, { label: 'Lucro/dia', r: true, get: (x) => (x.lucroDia == null ? '—' : brl(x.lucroDia)) }, { label: 'Deixou de ganhar', r: true, get: (x) => brl(x.perdeu) }];
   let h = `<p class="mut small" style="margin:0">Carros vendidos em ${esc(perText())}, do mais lucrativo para o menos.</p>`;
-  if (r.melhor) h += kpis([K('Melhor venda', `${esc(r.melhor.car)}<div class="small">${brl(r.melhor.lucro)}</div>`, 'pos'), K('Pior venda', `${esc(r.pior.car)}<div class="small">${brl(r.pior.lucro)}</div>`, sign(r.pior.lucro)), K('Carros vendidos', String(r.rows.length))]);
-  h += panel('Desempenho por carro', table(cols, r.rows), { name: 'carros-vendidos', cols: [{ k: 'car', label: 'Carro' }, { k: 'placa', label: 'Placa' }, { k: 'comprador', label: 'Comprador' }, { k: 'dvenda', label: 'Venda em', date: true }, { k: 'forma', label: 'Forma' }, { k: 'dias', label: 'Dias' }, { k: 'custo', label: 'Custo' }, { k: 'vvenda', label: 'Venda' }, { k: 'lucro', label: 'Lucro' }, { k: 'margem', label: 'Margem' }, { k: 'lucA', label: `Lucro ${nm('A')}` }, { k: 'lucB', label: `Lucro ${nm('B')}` }, { k: 'lucroDia', label: 'Lucro por dia' }, { k: 'perdeu', label: 'Deixou de ganhar' }], rows: r.rows });
+  const nPrej = r.rows.filter((x) => x.lucro < 0).length, nDesc = r.rows.filter((x) => x.perdeu > 0.004).length;
+  if (r.melhor) h += kpis([K('Melhor venda', `${esc(r.melhor.car)}<div class="small">${brl(r.melhor.lucro)}</div>`, 'pos', false, 'car:' + r.melhor.carId), K('Pior venda', `${esc(r.pior.car)}<div class="small">${brl(r.pior.lucro)}</div>`, sign(r.pior.lucro), false, 'car:' + r.pior.carId),
+    K('Carros vendidos', String(r.rows.length), '', false, 'ranking'), K('Com prejuízo', String(nPrej), nPrej ? 'neg' : '', false, 'ranking:prej')]);
+  // filtro: todos, só os que deram prejuízo, só os vendidos abaixo do anúncio
+  const f = S.ui.rkf || '';
+  const filtros = [['', 'Todos'], ['prej', `Com prejuízo (${nPrej})`], ['desc', `Vendidos abaixo do anúncio (${nDesc})`]];
+  if (f.startsWith('m:')) filtros.push([f, `Vendidos em ${mlabel(f.slice(2))}`]);
+  if (f.startsWith('f:')) filtros.push([f, `Forma: ${f.slice(2)}`]);
+  h += `<div class="chips no-print">${filtros.map(([k, l]) => `<button class="chip" data-act="rk-f" data-id="${esc(k)}" aria-pressed="${f === k}">${esc(l)}</button>`).join('')}</div>`;
+  const lista = r.rows.filter((x) => !f || (f === 'prej' ? x.lucro < 0 : f === 'desc' ? x.perdeu > 0.004 : f.startsWith('m:') ? String(x.dvenda).startsWith(f.slice(2)) : f.startsWith('f:') ? x.forma === f.slice(2) : true));
+  if (f === 'prej') lista.sort((a, b) => a.lucro - b.lucro); // o maior prejuízo primeiro
+  h += panel(f === 'prej' ? 'Carros que deram prejuízo' : f === 'desc' ? 'Carros vendidos abaixo do anúncio' : f.startsWith('m:') ? `Carros vendidos em ${mlabel(f.slice(2))}` : f.startsWith('f:') ? `Carros vendidos: ${f.slice(2)}` : 'Desempenho por carro', table(cols, lista, null, f === 'prej' ? 'Nenhum carro deu prejuízo neste período.' : 'Nenhum carro neste filtro.'), { name: 'carros-vendidos', cols: [{ k: 'car', label: 'Carro' }, { k: 'placa', label: 'Placa' }, { k: 'comprador', label: 'Comprador' }, { k: 'dvenda', label: 'Venda em', date: true }, { k: 'forma', label: 'Forma' }, { k: 'dias', label: 'Dias' }, { k: 'custo', label: 'Custo' }, { k: 'vvenda', label: 'Venda' }, { k: 'lucro', label: 'Lucro' }, { k: 'margem', label: 'Margem' }, { k: 'lucA', label: `Lucro ${nm('A')}` }, { k: 'lucB', label: `Lucro ${nm('B')}` }, { k: 'lucroDia', label: 'Lucro por dia' }, { k: 'perdeu', label: 'Deixou de ganhar' }], rows: lista });
   return { html: `<div class="stack">${h}</div>` };
 };
 

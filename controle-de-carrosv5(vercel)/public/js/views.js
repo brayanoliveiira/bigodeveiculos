@@ -129,6 +129,14 @@ function chart(months) {
 }
 
 export const views = {};
+/** Ficha do carro (o card completo, com os detalhes abertos) para mostrar numa janela: Gerencial, relatórios... */
+export function carFichaHtml(id) {
+  const d = S.D[id];
+  if (!d) return '';
+  const was = S.ui.open[id];
+  S.ui.open[id] = true;
+  try { return carCard(d).replace('data-act="toggle"', 'data-act="toggle" hidden'); } finally { if (was) S.ui.open[id] = was; else delete S.ui.open[id]; }
+}
 
 views.resumo = {
   mount(el) { this.paint(el); },

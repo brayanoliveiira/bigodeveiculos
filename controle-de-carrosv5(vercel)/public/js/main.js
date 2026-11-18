@@ -3,7 +3,7 @@ import { $, esc, brl, dmy as dmyStr, today, parseMoney, toast, initials } from '
 import { api, ApiError, setUnauthorizedHandler } from './api.js';
 import { S, LISTS, names, itemOf } from './state.js';
 import { openForm, openPlanForm, confirmBox, closeModal, setHooks } from './forms.js';
-import { views, ROLE_NAME } from './views.js';
+import { views, ROLE_NAME, carFichaHtml } from './views.js';
 import { renderReceipts, renderRepasses } from './vendas.js';
 import { renderParcelas } from './dividas.js';
 import { exportCsv } from './gerencial.js';
@@ -48,6 +48,14 @@ async function reload() {
   if (S.ui.rcCar && $('#modal').querySelector('.rc-sum')) renderReceipts(S.ui.rcCar); // janela de recebimentos aberta: atualiza
   if (S.ui.repCar && $('#modal').querySelector('.rp-sum')) renderRepasses(S.ui.repCar);
   if (S.ui.dvOwner && $('#modal').querySelector('.dv-sum')) renderParcelas(S.ui.dvOwner);
+  if (S.ui.ficha && $('#modal').querySelector('.car-ficha')) abrirFicha(S.ui.ficha);
+}
+/** Janela com a ficha completa de um carro (aberta pelo nome do carro no Gerencial e nos relatórios). */
+function abrirFicha(id) {
+  const html = carFichaHtml(Number(id));
+  if (!html) { toast('Carro não encontrado.'); return; }
+  S.ui.ficha = Number(id);
+  openSheet(`<div class="car-ficha">${html}</div><div class="acts"><button type="button" class="btn" data-x="cancel">Fechar</button></div>`, true);
 }
 setHooks({ reload });
 
@@ -214,7 +222,7 @@ document.addEventListener('click', async (ev) => {
   }
   if (b.dataset.st) { S.ui.st = b.dataset.st; views.carros.paint(); return; }
   if (b.dataset.vf) { S.ui.vf = b.dataset.vf; views.vendas.paint(); return; }
-  if (b.dataset.rep) { S.ui.rep = b.dataset.rep; views.gerencial.paint(); return; }
+  if (b.dataset.rep) { S.ui.rep = b.dataset.rep; S.ui.rkf = ''; views.gerencial.paint(); return; }
   const act = b.dataset.act, id = b.dataset.id;
   let it;
   switch (act) {
@@ -260,6 +268,10 @@ document.addEventListener('click', async (ev) => {
     case 'cg-f': S.ui.cgf = id; views.consignados.paint(); break;
     case 'so-f': S.ui.sof = id; views.socios.paint(); break;
     case 'so-per': S.ui.sper = id; views.socios.paint(); break;
+    case 'car-ficha': abrirFicha(id); break;
+    case 'ger-go': // número do Gerencial: abre o relatório que explica o número (com filtro, ex.: só as vendas com prejuízo)
+      S.ui.rep = id; S.ui.rkf = b.dataset.f || ''; if (b.closest('#modal')) closeModal(); views.gerencial.paint(); window.scrollTo(0, 0); break;
+    case 'rk-f': S.ui.rkf = id || ''; views.gerencial.paint(); break;
     case 'cg-dono': S.ui.cgdono = b.dataset.id || ''; if (S.ui.cgf === 'Por dono') S.ui.cgf = 'Todos'; views.consignados.paint(); break;
     case 'pd-new': openForm('pdebt', null, { prefill: { tipo: b.dataset.tipo || 'Dívida', devedor: b.dataset.dev || '', como: b.dataset.como || '' }, heading: b.dataset.tipo === 'Abatimento' ? 'Abater dívida entre sócios' : 'Nova dívida entre sócios' }); break;
     case 'pd-edit': openForm('pdebt', itemOf('pdebt', id), { heading: 'Editar dívida entre sócios' }); break;
