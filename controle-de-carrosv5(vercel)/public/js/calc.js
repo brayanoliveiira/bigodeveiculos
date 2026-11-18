@@ -111,8 +111,11 @@ var Calc = (function () {
       d.repDono = d.repasse; d.fDono = 1; d.lucDono = 0;
       if (d.socio) {
         var vs = num(c.vvenda), vend = c.status === 'Vendido' && vs !== null;
-        d.fDono = d.repasse / (d.repasse + d.entA + d.entB + d.gast + (vend ? 0 : d.prev));
-        if (vend) { d.repasse = r2(vs * d.fDono); d.lucDono = r2(d.repasse - d.repDono); }
+        // parte do dono no carro (proporção do valor); o % do lucro pode ser combinado à parte (donoPct, 0 a 1)
+        d.partDono = d.repasse / (d.repasse + d.entA + d.entB + d.gast + (vend ? 0 : d.prev));
+        d.pctCombinado = num(c.donoPct) !== null;
+        d.fDono = d.pctCombinado ? Math.max(0, Math.min(1, num(c.donoPct))) : d.partDono;
+        if (vend) { d.lucDono = r2((vs - (d.repasse + d.entA + d.entB + d.gast)) * d.fDono); d.repasse = r2(d.repDono + d.lucDono); }
       }
       d.custo = d.entA + d.entB + d.repasse + d.gast; // consignado: o repasse ao dono é custo (sai da venda), mas ninguém o investiu
       d.repFalta = d.consig ? r2(Math.max(0, d.repasse - d.repPago - d.emEspecie)) : 0;

@@ -353,3 +353,13 @@ test('gasto no cartão parcelado: metade de cada sócio e parcelas nas contas a 
   assert.equal(dv.porGasto[5].nPago, 1); assert.equal(dv.porCar.c, undefined, 'não mistura com veículos a pagar');
   assert.equal(C.debts(pay, [], [{ id: 'c' }], HOJE, [{ ...ex[0], deleted: true }]).total, 0, 'gasto excluído leva as parcelas');
 });
+
+test('dono sócio com % do lucro combinado: ignora a proporção do carro', () => {
+  const car = (o) => ({ id: 'c', name: 'Civic', dono: 'Felipe', donoSocio: 1, entT: 32000, repasse: 23000, anun: 42000, status: 'Em estoque', ...o });
+  let d = C.compute([car({ donoPct: 0.5 })], [], [], SET, HOJE).c;
+  near(d.lucDono, 5000, 'previsto: metade dos 10 mil'); near(d.proj, 5000, 'nossa metade'); near(d.partDono, 23 / 32, 'parte no carro continua');
+  d = C.compute([car({ donoPct: 0.5, status: 'Vendido', vvenda: 42000, dvenda: HOJE })], [], [], SET, HOJE).c;
+  near(d.repasse, 28000, 'dono: 23 mil + 5 mil'); near(d.lucro, 5000, 'nosso lucro'); near(d.retA + d.retB, 14000, 'nós: 9 mil + 5 mil');
+  d = C.compute([car({ status: 'Vendido', vvenda: 42000, dvenda: HOJE })], [], [], SET, HOJE).c;
+  near(d.repasse, 30187.5, 'sem % combinado: proporcional como antes');
+});

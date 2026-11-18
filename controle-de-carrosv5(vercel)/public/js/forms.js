@@ -34,46 +34,47 @@ const locOpts = () => LISTS.locs.filter((l) => l !== 'Entregue').map((o) => [o, 
 const F = {
   car: { col: 'cars', title: 'carro', fields: () => [
     { g: 'Identificação' },
-    { k: 'placa', label: 'Placa', t: 'text', upper: true, hint: 'Ao digitar a placa completa, modelo, ano, cor e FIPE são preenchidos sozinhos.' }, { k: 'ano', label: 'Ano', t: 'int' },
+    { k: 'placa', label: 'Placa', t: 'text', upper: true, hint: 'Preenche modelo, ano, cor e FIPE.' }, { k: 'ano', label: 'Ano', t: 'int' },
     { lookup: true },
-    { k: 'name', label: 'Carro (modelo e versão)', t: 'text', req: true, full: true },
-    { k: 'marca', label: 'Montadora', t: 'text', hint: 'Vem da placa ou da tabela FIPE.' }, { k: 'cor', label: 'Cor', t: 'text' },
-    { k: 'km', label: 'KM (quilometragem)', t: 'int', milhar: true, hint: 'Ex.: 85.000' },
-    { k: 'fipe', label: 'Valor FIPE', t: 'money', hint: 'Vem da busca na tabela FIPE ou da placa. Também dá para digitar.' },
-    { k: 'fipeRef', label: 'Referência da FIPE', t: 'text', hint: 'Mês da tabela e código FIPE.' },
-    { k: 'leilao', label: 'Veio de leilão', t: 'chk' }, { k: 'sinistro', label: 'Tem sinistro', t: 'chk' },
-    { k: 'histObs', label: 'Observação de leilão / sinistro', t: 'text', full: true, showIf: temHist, hint: 'Ex.: leilão de financeira, batida leve na traseira, sem dano estrutural.' },
+    { k: 'name', label: 'Modelo', t: 'text', req: true, full: true },
+    { k: 'marca', label: 'Montadora', t: 'text' }, { k: 'cor', label: 'Cor', t: 'text' },
+    { k: 'km', label: 'KM', t: 'int', milhar: true },
+    { k: 'fipe', label: 'Valor FIPE', t: 'money' },
+    { k: 'fipeRef', label: 'Referência FIPE', t: 'text' },
+    { k: 'leilao', label: 'Leilão', t: 'chk' }, { k: 'sinistro', label: 'Sinistro', t: 'chk' },
+    { k: 'histObs', label: 'Detalhes do leilão / sinistro', t: 'text', full: true, showIf: temHist },
     { g: 'Compra' },
-    { k: 'dcompra', label: 'Data da compra', t: 'date', hint: 'Ou de quando o carro chegou.' },
-    { k: 'dono', label: 'Carro de terceiro? Dono do carro', t: 'text', full: true, hint: 'Deixe vazio se o carro é nosso. Preenchido = consignado: ninguém paga pelo carro, ele só fica aqui para vender.' },
-    { k: 'donoSocio', label: 'O dono é sócio neste carro (lucro proporcional)', t: 'chk', full: true, showIf: isConsig, hint: 'Marque quando vocês também têm dinheiro no carro (ex.: entrou por 32 mil, 23 mil do dono e 9 mil nossos). O lucro da venda é dividido na proporção de cada um.' },
-    { k: 'entT', label: 'Valor da compra', t: 'money', hint: 'Quanto o carro custou. Carro de troca que fica com o dono do consignado: o valor em que entrou na troca.', showIf: (v) => notConsig(v) || !!v.origemId || isSocio(v) },
-    { k: 'repasse', label: 'Repasse ao dono (valor mínimo)', t: 'money', full: true, showIf: isConsig, hint: 'Quanto precisa ir para o dono. Os gastos do carro saem do valor da venda e o que sobrar é a comissão.' },
+    { k: 'dcompra', label: 'Data da compra', t: 'date' },
+    { k: 'dono', label: 'Dono (consignado)', t: 'text', full: true, hint: 'Vazio se o carro é nosso.' },
+    { k: 'donoSocio', label: 'Dono é sócio no carro', t: 'chk', full: true, showIf: isConsig },
+    { k: 'entT', label: 'Valor da compra', t: 'money', showIf: (v) => notConsig(v) || !!v.origemId || isSocio(v) },
+    { k: 'repasse', label: 'Repasse ao dono', t: 'money', full: true, showIf: isConsig },
     { split: true },
-    { k: 'ovrA', label: `Quanto ${names().A} pagou`, t: 'money', showIf: (v) => temNossaParte(v) && splitCustom() },
-    { k: 'ovrB', label: `Quanto ${names().B} pagou`, t: 'money', showIf: (v) => temNossaParte(v) && splitCustom() },
+    { k: 'ovrA', label: `Pago por ${names().A}`, t: 'money', showIf: (v) => temNossaParte(v) && splitCustom() },
+    { k: 'ovrB', label: `Pago por ${names().B}`, t: 'money', showIf: (v) => temNossaParte(v) && splitCustom() },
     { compra: true },
-    { k: 'docNome', label: 'Documento em nome de', t: 'sel', opts: () => (LISTS.docNomes || []).map((o) => [o, o === 'Comprador' ? 'Comprador (já transferido)' : o]), blank: 'Não informado', hint: 'Carro comprado e deixado no nome do antigo dono até a venda: escolha "Antigo dono".' },
+    { k: 'docNome', label: 'Documento em nome de', t: 'sel', opts: () => (LISTS.docNomes || []).map((o) => [o, o === 'Comprador' ? 'Comprador (transferido)' : o]), blank: 'Não informado' },
     { k: 'docPend', label: 'Documentação pendente', t: 'chk' },
-    { k: 'docObs', label: 'O que falta na documentação', t: 'text', full: true, showIf: (v) => !!v.docPend, hint: 'Ex.: pegar o DUT, quitar multa, vistoria.' },
-    { k: 'origemId', label: 'Veio de troca em qual carro nosso?', t: 'car', blank: 'Não veio de troca', full: true, hint: 'Se este carro entrou como pagamento de uma venda, escolha o carro vendido. Para o carro de troca que fica com o dono de um consignado: preencha o mesmo Dono acima, deixe o repasse em branco e escolha aqui o carro consignado vendido.' },
+    { k: 'docObs', label: 'O que falta', t: 'text', full: true, showIf: (v) => !!v.docPend },
+    { k: 'origemId', label: 'Entrou na troca de', t: 'car', blank: 'Não veio de troca', full: true },
     { k: 'anun', label: 'Preço de anúncio', t: 'money' },
     { g: 'Onde está' },
-    { k: 'loc', label: 'Onde está agora', t: 'sel', opts: locOpts, blank: 'Não informado', showIf: notSold },
-    { k: 'locdet', label: 'Local', t: 'text', showIf: (v) => notSold(v) && temLocal(v), hint: 'Ex.: Oficina do Zé, Funilaria Central.' },
-    { k: 'locdesde', label: 'No local desde', t: 'date', showIf: notSold, hint: 'No Pátio / Loja, vazio = data da compra.' }, { k: 'locprev', label: 'Previsão de saída', t: 'date', showIf: (v) => notSold(v) && temLocal(v) },
+    { k: 'loc', label: 'Local', t: 'sel', opts: locOpts, blank: 'Não informado', showIf: notSold },
+    { k: 'locdet', label: 'Nome do local', t: 'text', showIf: (v) => notSold(v) && temLocal(v) },
+    { k: 'locdesde', label: 'Desde', t: 'date', showIf: notSold }, { k: 'locprev', label: 'Previsão de saída', t: 'date', showIf: (v) => notSold(v) && temLocal(v) },
     { k: 'status', label: 'Status', t: 'sel', opts: listOpts('status'), req: true },
     { g: 'Venda', showIf: isSold },
     { k: 'dvenda', label: 'Data da venda', t: 'date', showIf: isSold },
-    { k: 'vvenda', label: 'Valor total da venda', t: 'money', showIf: isSold, hint: 'Dinheiro + carro de troca.' },
-    { k: 'quemrec', label: 'Quem ficou com o dinheiro', t: 'sel', opts: () => [...partnerOpts(), ['X', 'Outra divisão']], blank: 'Metade cada (padrão)', showIf: isSold },
-    { k: 'recValA', label: `Quanto do dinheiro ficou com ${names().A}`, t: 'money', showIf: (v) => isSold(v) && v.quemrec === 'X', hint: 'O resto do dinheiro fica com o outro sócio.' },
+    { k: 'vvenda', label: 'Valor da venda', t: 'money', showIf: isSold, hint: 'Dinheiro + carro de troca.' },
+    { k: 'quemrec', label: 'Dinheiro ficou com', t: 'sel', opts: () => [...partnerOpts(), ['X', 'Outra divisão']], blank: 'Metade cada', showIf: isSold },
+    { k: 'recValA', label: `Ficou com ${names().A}`, t: 'money', showIf: (v) => isSold(v) && v.quemrec === 'X' },
     { k: 'comprador', label: 'Comprador', t: 'text', showIf: isSold },
     { venda: true },
     { g: 'Divisão do lucro' },
-    { k: 'divis', label: 'Como dividir o lucro deste carro', t: 'sel', opts: listOpts('divis'), blank: '50/50 (padrão)', full: true, hint: 'Em carro consignado, é a divisão da comissão. Para uma pessoa ficar com tudo, use Personalizado com 100% ou 0%.' },
-    { k: 'pcust', label: `% do lucro de ${names().A}`, t: 'pct', showIf: (v) => v.divis === 'Personalizado' },
-    { k: 'obs', label: 'Observações', t: 'text', full: true, hint: 'Qualquer detalhe do carro ou da negociação.' },
+    { k: 'donoPct', label: 'Lucro do dono (%)', t: 'pct', showIf: isSocio, hint: 'Vazio: proporcional ao valor dele no carro.' },
+    { k: 'divis', label: 'Entre os sócios', t: 'sel', opts: listOpts('divis'), blank: '50/50', full: true },
+    { k: 'pcust', label: `% de ${names().A}`, t: 'pct', showIf: (v) => v.divis === 'Personalizado' },
+    { k: 'obs', label: 'Observações', t: 'text', full: true },
   ], defaults: () => ({ status: 'Em estoque', dcompra: today() }) },
   expense: { col: 'expenses', title: 'gasto', fields: () => [
     { k: 'carId', label: 'Carro', t: 'car', req: true, full: true },
@@ -81,9 +82,9 @@ const F = {
     { k: 'cat', label: 'Categoria', t: 'sel', opts: listOpts('cats'), req: true }, { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada' },
     { k: 'desc', label: 'Descrição', t: 'text', full: true },
     { k: 'forma', label: 'Forma de pagamento', t: 'sel', opts: listOpts('formasPag'), blank: 'Não informada' },
-    { k: 'nParc', label: 'Em quantas parcelas', t: 'int', showIf: isCartao, hint: '1 = à vista no cartão (uma fatura).' },
-    { k: 'venc1', label: 'Vencimento da 1ª fatura', t: 'date', showIf: isCartao, hint: 'As outras parcelas vencem no mesmo dia dos meses seguintes.' },
-    { k: 'cartao', label: 'Qual cartão', t: 'text', showIf: isCartao, hint: 'Ex.: Nubank do Brayan.' },
+    { k: 'nParc', label: 'Parcelas', t: 'int', showIf: isCartao },
+    { k: 'venc1', label: '1ª fatura', t: 'date', showIf: isCartao },
+    { k: 'cartao', label: 'Cartão', t: 'text', showIf: isCartao },
     { cartaoPrev: true },
     { k: 'obs', label: 'Observação', t: 'text', full: true },
   ], defaults: () => ({ date: today() }) },
@@ -103,7 +104,7 @@ const F = {
     { k: 'obs', label: 'Observação', t: 'text', full: true },
   ], defaults: () => ({ status: 'Pendente', due: today() }) },
   pay: { col: 'payments', title: 'pagamento', fields: () => [
-    { k: 'date', label: 'Data em que pagou', t: 'date', req: true }, { k: 'valor', label: 'Valor que pagou', t: 'money', req: true, hint: 'Pagou só uma parte? Digite o que entrou. O que faltar continua em aberto.' },
+    { k: 'date', label: 'Data do pagamento', t: 'date', req: true }, { k: 'valor', label: 'Valor pago', t: 'money', req: true },
     { k: 'quem', label: 'Quem ficou com o dinheiro', t: 'sel', opts: partnerOpts, blank: 'Regra da parcela / do carro (padrão)', full: true },
     { k: 'obs', label: 'Observação', t: 'text', full: true },
   ], defaults: () => ({ date: today() }) },
@@ -113,37 +114,37 @@ const F = {
     { k: 'obs', label: 'Observação', t: 'text', full: true },
   ], defaults: () => ({ date: today() }) },
   loan: { col: 'loans', title: 'empréstimo', fields: () => [
-    { k: 'credor', label: 'De quem pegamos', t: 'text', req: true, hint: 'Ex.: Mãe, Nubank, Banco Inter.' }, { k: 'valor', label: 'Valor emprestado', t: 'money', req: true },
-    { k: 'data', label: 'Data em que o dinheiro entrou', t: 'date', req: true }, { k: 'carId', label: 'Carro comprado com esse dinheiro', t: 'car', blank: 'Nenhum / vários' },
-    { k: 'modo', label: 'Como vamos pagar', t: 'sel', opts: listOpts('loanModes'), req: true, full: true, hint: 'Juros mensais: paga só os juros todo mês e devolve o valor inteiro no vencimento. Parcelado: parcelas iguais com juros (ex.: Nubank em 2x). Personalizado: você escolhe cada data e valor (já com os juros).' },
-    { k: 'jurosMes', label: 'Juros por mês em R$', t: 'money', showIf: isJurosMes, hint: 'Ex.: R$ 2.000,00. A % ao lado é calculada sozinha.' },
-    { k: 'taxaMes', label: 'Juros por mês em %', t: 'pct', showIf: (v) => !isLivre(v), hint: 'Ex.: 5,8. Digitou a %? O valor em R$ é calculado sozinho. No parcelado, calcula as parcelas (tabela Price).' },
+    { k: 'credor', label: 'Credor', t: 'text', req: true }, { k: 'valor', label: 'Valor emprestado', t: 'money', req: true },
+    { k: 'data', label: 'Data', t: 'date', req: true }, { k: 'carId', label: 'Carro', t: 'car', blank: 'Nenhum / vários' },
+    { k: 'modo', label: 'Pagamento', t: 'sel', opts: listOpts('loanModes'), req: true, full: true },
+    { k: 'jurosMes', label: 'Juros (R$/mês)', t: 'money', showIf: isJurosMes },
+    { k: 'taxaMes', label: 'Juros (% ao mês)', t: 'pct', showIf: (v) => !isLivre(v) },
     { k: 'nParc', label: 'Número de parcelas', t: 'int', showIf: isParcelado },
-    { k: 'venc1', label: '1º vencimento dos juros', t: 'date', showIf: isJurosMes, hint: 'Os outros meses vencem no mesmo dia. Vazio = 1 mês depois do empréstimo.' },
+    { k: 'venc1', label: '1º vencimento', t: 'date', showIf: isJurosMes },
     { crono: 'lo_crono', showIf: isLivre },
-    { k: 'venc', label: 'Vencimento', t: 'date', showIf: (v) => !isLivre(v), hint: 'Juros mensais: dia da devolução (valor + juros do mês); vazio = sem data para devolver, só os juros dos próximos 12 meses. Parcelado: 1º vencimento (vazio = 1 mês depois).' },
-    { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada (padrão)' },
-    { k: 'obs', label: 'Finalidade (para que foi o dinheiro)', t: 'text', full: true, hint: 'Ex.: comprar a Kombi. Com o carro escolhido acima, o app acompanha as trocas: se a Kombi for vendida e entrar um Celta, o dinheiro passa a estar no Celta.' },
+    { k: 'venc', label: 'Vencimento', t: 'date', showIf: (v) => !isLivre(v), hint: 'Juros mensais: data da devolução (vazio = sem data). Parcelado: 1º vencimento.' },
+    { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada' },
+    { k: 'obs', label: 'Finalidade', t: 'text', full: true },
   ], defaults: () => ({ data: today(), modo: 'Juros mensais' }) },
   pdebt: { col: 'partnerDebts', title: 'dívida entre sócios', fields: () => [
-    { k: 'tipo', label: 'Tipo', t: 'sel', opts: listOpts('pdTipos'), req: true, hint: 'Dívida: o sócio fica devendo ao outro. Abatimento: ele pagou parte (ex.: a parte do outro num carro).' },
+    { k: 'tipo', label: 'Tipo', t: 'sel', opts: listOpts('pdTipos'), req: true },
     { k: 'devedor', label: 'Sócio que deve', t: 'sel', opts: partnerOpts, req: true },
     { k: 'valor', label: 'Valor', t: 'money', req: true }, { k: 'date', label: 'Data', t: 'date', req: true },
-    { k: 'como', label: 'Como pagou', t: 'sel', opts: listOpts('pdComo'), blank: 'Não informado', showIf: (v) => v.tipo === 'Abatimento', hint: 'Num carro: pagou a parte do outro num carro que entrou. Dinheiro ou Pix: passou o valor direto.' },
-    { k: 'carId', label: 'Em qual carro foi abatido', t: 'car', blank: 'Nenhum carro', full: true, showIf: (v) => v.tipo === 'Abatimento' && v.como !== 'Dinheiro' && v.como !== 'Pix', hint: 'Ex.: Marcos pagou R$ 3 mil da parte do Brayan neste carro. A parte de cada um no carro não muda; só a dívida diminui.' },
+    { k: 'como', label: 'Como pagou', t: 'sel', opts: listOpts('pdComo'), blank: 'Não informado', showIf: (v) => v.tipo === 'Abatimento' },
+    { k: 'carId', label: 'Carro', t: 'car', blank: 'Nenhum carro', full: true, showIf: (v) => v.tipo === 'Abatimento' && v.como !== 'Dinheiro' && v.como !== 'Pix' },
     { k: 'obs', label: 'Observação', t: 'text', full: true },
   ], defaults: () => ({ date: today(), tipo: 'Dívida' }) },
   payable: { col: 'payables', title: 'conta a pagar', fields: () => [
     { k: 'label', label: 'Parcela', t: 'text' }, { k: 'due', label: 'Vencimento', t: 'date', req: true },
     { k: 'valor', label: 'Valor', t: 'money', req: true }, { k: 'forma', label: 'Forma de pagamento', t: 'sel', opts: listOpts('formasPag'), blank: 'Não informada' },
-    { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada (padrão)' }, { k: 'credor', label: 'A quem pagamos', t: 'text' },
+    { k: 'quem', label: 'Quem paga', t: 'sel', opts: partnerOpts, blank: 'Metade cada' }, { k: 'credor', label: 'A quem pagamos', t: 'text' },
     { k: 'status', label: 'Situação', t: 'sel', opts: listOpts('paystatus'), req: true },
     { k: 'paidAt', label: 'Pago em', t: 'date', showIf: (v) => v.status === 'Pago' },
     { k: 'obs', label: 'Observação', t: 'text', full: true },
   ] },
   move: { col: 'cars', title: 'Mover carro', fields: () => [
     { k: 'loc', label: 'Onde está agora', t: 'sel', opts: locOpts, req: true, full: true },
-    { k: 'locdet', label: 'Local', t: 'text', full: true, showIf: temLocal, hint: 'Ex.: Oficina do Zé, Funilaria Central.' },
+    { k: 'locdet', label: 'Local', t: 'text', full: true, showIf: temLocal },
     { k: 'locdesde', label: 'No local desde', t: 'date' }, { k: 'locprev', label: 'Previsão de saída', t: 'date', showIf: temLocal },
   ] },
 };
@@ -447,26 +448,26 @@ const CP_PARCELAS = [2, 3, 4, 5, 6, 8, 10, 12];
 /** "Quem pagou o carro": metade cada (padrão) ou outra divisão, que mostra quanto cada sócio pagou. */
 function splitHtml(init) {
   const custom = Calc.num(init.ovrA) != null || Calc.num(init.ovrB) != null;
-  return `<div class="field" id="cp_splitf"><label for="cp_split">Quem pagou o carro</label><select id="cp_split"><option value="">Metade cada</option><option value="custom"${custom ? ' selected' : ''}>Outra divisão</option></select></div>`;
+  return `<div class="field" id="cp_splitf"><label for="cp_split">Pago por</label><select id="cp_split"><option value="">Metade cada</option><option value="custom"${custom ? ' selected' : ''}>Outra divisão</option></select></div>`;
 }
 /** "Como vamos pagar": à vista, a prazo ou parcelado, no mesmo fluxo da compra. Carro que já tem pagamento programado só mostra o atalho. */
 function compraHtml(existing) {
   const tem = existing && (S.payables || []).some((p) => !p.deleted && p.carId === existing.id && p.origem === 'Carro');
   const resumo = '<div class="field full cp-prev" id="cp_prev"></div>';
-  if (tem) return `<div class="field" data-cpbox><label>Como vamos pagar</label><span class="hint">Já tem pagamento programado. <button type="button" class="linkbtn" data-act="dv-parc-car" data-id="${existing.id}">Ver os pagamentos</button></span></div>${resumo}`;
+  if (tem) return `<div class="field" data-cpbox><label>Como vamos pagar</label><span class="hint">Já programado. <button type="button" class="linkbtn" data-act="dv-parc-car" data-id="${existing.id}">Ver os pagamentos</button></span></div>${resumo}`;
   const opt = (arr, fmt, sel) => arr.map((x) => `<option value="${esc(x)}"${String(x) === String(sel) ? ' selected' : ''}>${esc(fmt(x))}</option>`).join('');
-  return `<div class="field" data-cpbox><label for="cp_modo">Como vamos pagar</label><select id="cp_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option><option value="livre">Personalizado</option></select></div>
-    <div class="field" data-cp="prazo parcelado livre"><label for="cp_ent">Pago na hora</label><input type="text" id="cp_ent" inputmode="decimal" data-money placeholder="R$ 0,00"><span class="hint">Vazio se não pagamos nada na compra.</span></div>
-    <div class="field" data-cp="prazo"><label for="cp_prazo">Prazo do restante</label><select id="cp_prazo">${opt(CP_PRAZOS, (x) => x + ' dias', 30)}<option value="data">Data específica</option></select></div>
+  return `<div class="field" data-cpbox><label for="cp_modo">Pagamento</label><select id="cp_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option><option value="livre">Personalizado</option></select></div>
+    <div class="field" data-cp="prazo parcelado livre"><label for="cp_ent">Pago na hora</label><input type="text" id="cp_ent" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-cp="prazo"><label for="cp_prazo">Prazo</label><select id="cp_prazo">${opt(CP_PRAZOS, (x) => x + ' dias', 30)}<option value="data">Data específica</option></select></div>
     <div class="field" data-cp="prazo-data"><label for="cp_data">Data do pagamento</label><input type="date" id="cp_data"></div>
-    <div class="field" data-cp="parcelado"><label for="cp_n">Parcelas do restante</label><select id="cp_n">${opt(CP_PARCELAS, (x) => x + 'x', 2)}</select></div>
-    <div class="field" data-cp="parcelado"><label for="cp_first">1º vencimento</label><input type="date" id="cp_first"><span class="hint">Vazio: 1 mês depois da compra.</span></div>
+    <div class="field" data-cp="parcelado"><label for="cp_n">Parcelas</label><select id="cp_n">${opt(CP_PARCELAS, (x) => x + 'x', 2)}</select></div>
+    <div class="field" data-cp="parcelado"><label for="cp_first">1º vencimento</label><input type="date" id="cp_first"></div>
     ${cronoHtml('cp_crono', 'data-cp="livre"')}
-    <div class="field" data-cp="prazo parcelado livre"><label for="cp_credor">A quem vamos pagar</label><input type="text" id="cp_credor" placeholder="Ex.: João, antigo dono" autocomplete="off"></div>
-    <div class="field" data-cp="prazo parcelado livre custom"><label for="cp_quemrest">Quem paga o restante</label><select id="cp_quemrest"><option value="">Os dois (metade cada)</option><option value="A">Só ${esc(names().A)}</option><option value="B">Só ${esc(names().B)}</option><option value="custom">Outra divisão</option></select></div>
-    <div class="field row-start" data-cp="prazo parcelado livre custom restcustom"><label for="cp_restA">Quanto ${esc(names().A)} paga do restante</label><input type="text" id="cp_restA" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
-    <div class="field" data-cp="prazo parcelado livre custom restcustom"><label for="cp_restB">Quanto ${esc(names().B)} paga do restante</label><input type="text" id="cp_restB" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
-    <div class="field row-start" data-cp="prazo parcelado livre"><label for="cp_forma">Forma de pagamento</label><select id="cp_forma"><option value="">Não informada</option>${opt(LISTS.formasPag || [], (x) => x, 'Pix')}</select></div>
+    <div class="field" data-cp="prazo parcelado livre"><label for="cp_credor">Pagar a</label><input type="text" id="cp_credor" autocomplete="off"></div>
+    <div class="field" data-cp="prazo parcelado livre custom"><label for="cp_quemrest">Restante pago por</label><select id="cp_quemrest"><option value="">Os dois (metade cada)</option><option value="A">Só ${esc(names().A)}</option><option value="B">Só ${esc(names().B)}</option><option value="custom">Outra divisão</option></select></div>
+    <div class="field row-start" data-cp="prazo parcelado livre custom restcustom"><label for="cp_restA">Restante de ${esc(names().A)}</label><input type="text" id="cp_restA" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-cp="prazo parcelado livre custom restcustom"><label for="cp_restB">Restante de ${esc(names().B)}</label><input type="text" id="cp_restB" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field row-start" data-cp="prazo parcelado livre"><label for="cp_forma">Forma</label><select id="cp_forma"><option value="">Não informada</option>${opt(LISTS.formasPag || [], (x) => x, 'Pix')}</select></div>
     ${resumo}`;
 }
 /** Divisão do carro entre os sócios, como o cálculo usa (metade cada ou os valores informados). */
@@ -537,14 +538,10 @@ const pctTxt = (f) => (Math.round(f * 1000) / 10).toLocaleString('pt-BR') + '%';
 function compraRefresh(cur) {
   const consig = isConsig(cur), custom = splitCustom(), socio = isSocio(cur);
   const sf = $('#cp_splitf');
-  if (sf) { sf.hidden = consig && !socio; const l = sf.querySelector('label'); if (l) l.textContent = socio ? 'Quem pagou a nossa parte' : 'Quem pagou o carro'; }
+  if (sf) { sf.hidden = consig && !socio; const l = sf.querySelector('label'); if (l) l.textContent = socio ? 'Nossa parte paga por' : 'Pago por'; }
   const le = $('label[for="f_entT"]'), lr = $('label[for="f_repasse"]');
-  if (le) le.textContent = socio && !cur.origemId ? 'Valor total do carro (dono + nós)' : 'Valor da compra';
-  const he = le && le.parentElement.querySelector('.hint');
-  if (he) he.textContent = socio && !cur.origemId ? 'Quanto o carro vale na entrada, somando a parte do dono e a nossa (ex.: 32 mil).' : 'Quanto o carro custou. Carro de troca que fica com o dono do consignado: o valor em que entrou na troca.';
-  if (lr) lr.textContent = socio ? 'Parte do dono no carro' : 'Repasse ao dono (valor mínimo)';
-  const hr = lr && lr.parentElement.querySelector('.hint');
-  if (hr) hr.textContent = socio ? 'Quanto do valor total é do dono (ex.: 23 mil). Na venda ele recebe isso mais a parte dele no lucro.' : 'Quanto precisa ir para o dono. Os gastos do carro saem do valor da venda e o que sobrar é a comissão.';
+  if (le) le.textContent = socio && !cur.origemId ? 'Valor total do carro' : 'Valor da compra';
+  if (lr) lr.textContent = socio ? 'Parte do dono' : 'Repasse ao dono';
   document.querySelectorAll('[data-cpbox]').forEach((el) => { el.hidden = consig; el.classList.toggle('row-start', custom); });
   const oa = document.querySelector('.field[data-k="ovrA"]');
   if (oa) oa.classList.add('row-start'); // os valores dos dois sócios ficam lado a lado
@@ -560,8 +557,8 @@ function compraRefresh(cur) {
   if (ent) {
     ent.readOnly = custom;
     const hint = ent.parentElement.querySelector('.hint');
-    if (custom) { const d = divisaoCompra(); ent.value = moneyField(round2(d.pagoA + d.pagoB)); if (hint) hint.textContent = `Soma do que ${names().A} e ${names().B} pagaram.`; }
-    else if (hint) hint.textContent = 'Vazio se não pagamos nada na compra.';
+    if (custom) { const d = divisaoCompra(); ent.value = moneyField(round2(d.pagoA + d.pagoB)); if (hint) hint.textContent = 'Soma dos dois.'; }
+    else if (hint) hint.textContent = '';
   }
   const lA = $('label[for="f_ovrA"]'), lB = $('label[for="f_ovrB"]');
   if (lA) lA.textContent = modo ? `Quanto ${names().A} pagou na hora` : `Quanto ${names().A} pagou`;
@@ -573,8 +570,9 @@ function compraRefresh(cur) {
     const tot = numDe('f_entT') || 0, dono = numDe('f_repasse') || 0, nos = valorNosso();
     if (!(tot > 0) || cur.origemId) { prev.textContent = ''; return; }
     const e = divisaoCompra();
-    let t = `Nossa parte: <b>${brl(nos)}</b> (${esc(names().A)} ${brl(e.A)} e ${esc(names().B)} ${brl(e.B)}).`;
-    if (tot > 0 && dono > 0) t += ` O lucro da venda fica ${pctTxt(dono / tot)} com ${esc(cur.dono.trim())} e ${pctTxt(nos / tot)} com vocês.`;
+    let t = `Nossa parte: <b>${brl(nos)}</b> (${esc(names().A)} ${brl(e.A)}, ${esc(names().B)} ${brl(e.B)}).`;
+    const pc = parseMoney(String(cur.donoPct || '')), fd = pc != null && !Number.isNaN(pc) ? pc / 100 : (tot > 0 ? dono / tot : null);
+    if (fd != null && dono > 0) t += ` Lucro: ${pctTxt(fd)} ${esc(cur.dono.trim())}, ${pctTxt(1 - fd)} nosso.`;
     if (dono > tot) t += ' <span class="neg">A parte do dono passa do valor total.</span>';
     if (custom && Math.abs(e.pagoA + e.pagoB - nos) > 0.004) t += ` <span class="neg">A soma (${brl(e.pagoA + e.pagoB)}) não bate com a nossa parte (${brl(nos)}).</span>`;
     prev.innerHTML = t; return;
@@ -606,25 +604,25 @@ function vendaHtml(existing) {
   const temRec = existing && (S.receipts || []).some((r) => !r.deleted && r.carId === existing.id);
   let h = '';
   if (filhos.length) h += `<div class="field full" data-vdbox><label>Carro na troca</label><span>${filhos.map((c) => `${esc(c.name)}${c.placa ? ' (' + esc(c.placa) + ')' : ''}, entrou por ${brl(Calc.num(c.entT))}`).join('; ')}</span></div>`;
-  else h += `<div class="field" data-vdbox><label for="vd_troca">Entrou carro na troca?</label><select id="vd_troca"><option value="">Não</option><option value="sim">Sim</option></select></div>
-    <div class="field" data-vd="troca"><label for="vd_dif">A diferença</label><select id="vd_dif"><option value="">O comprador pagou (dinheiro / Pix)</option><option value="nos">Nós pagamos (o carro da troca vale mais)</option></select></div>
-    <div class="field" data-vd="troca" data-vdif="rec"><label for="vd_cash">Recebido em dinheiro / Pix</label><input type="text" id="vd_cash" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
-    <div class="field" data-vd="troca" data-vdif="nos"><label for="vd_pago">Quanto pagamos ao comprador</label><input type="text" id="vd_pago" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
-    <div class="field" data-vd="troca" data-vdif="nos"><label for="vd_pquem">Quem pagou a diferença</label><select id="vd_pquem"><option value="">Os dois (metade cada)</option><option value="A">Só ${esc(names().A)}</option><option value="B">Só ${esc(names().B)}</option></select></div>
-    <div class="field" data-vd="troca" data-vdif="nos"><label for="vd_pcomo">Pagamos com</label><input type="text" id="vd_pcomo" autocomplete="off" placeholder="Ex.: Pix, um iPhone 18 Pro Max"></div>
-    <div class="field full" data-vd="troca" data-vconsig><label for="vd_mantem">O dono do consignado manteve o valor no carro da troca?</label><select id="vd_mantem"><option value="">Não, ele recebe o repasse</option><option value="sim">Sim, o carro da troca fica consignado com ele</option></select><span class="hint">Ex.: em vez de receber os R$ 23 mil, o dono deixou esse valor no carro novo, que vocês vão vender.</span></div>
-    <div class="field row-start" data-vd="troca"><label for="vd_placa">Placa do carro da troca</label><input type="text" id="vd_placa" style="text-transform:uppercase" autocapitalize="characters" spellcheck="false" autocomplete="off"><span class="hint" id="vd_plres">Com a placa completa, modelo e ano vêm sozinhos.</span></div>
-    <div class="field" data-vd="troca"><label for="vd_nome">Carro da troca</label><input type="text" id="vd_nome" autocomplete="off" placeholder="Ex.: VW Gol 1.0"></div>
+  else h += `<div class="field" data-vdbox><label for="vd_troca">Carro na troca</label><select id="vd_troca"><option value="">Não</option><option value="sim">Sim</option></select></div>
+    <div class="field" data-vd="troca"><label for="vd_dif">Diferença</label><select id="vd_dif"><option value="">Paga pelo comprador</option><option value="nos">Paga por nós</option></select></div>
+    <div class="field" data-vd="troca" data-vdif="rec"><label for="vd_cash">Recebido em dinheiro</label><input type="text" id="vd_cash" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-vd="troca" data-vdif="nos"><label for="vd_pago">Valor pago ao comprador</label><input type="text" id="vd_pago" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-vd="troca" data-vdif="nos"><label for="vd_pquem">Pago por</label><select id="vd_pquem"><option value="">Metade cada</option><option value="A">Só ${esc(names().A)}</option><option value="B">Só ${esc(names().B)}</option></select></div>
+    <div class="field" data-vd="troca" data-vdif="nos"><label for="vd_pcomo">Pago com</label><input type="text" id="vd_pcomo" autocomplete="off"></div>
+    <div class="field full" data-vd="troca" data-vconsig><label for="vd_mantem">Repasse do dono</label><select id="vd_mantem"><option value="">Recebe o repasse</option><option value="sim">Fica no carro da troca</option></select></div>
+    <div class="field row-start" data-vd="troca"><label for="vd_placa">Placa da troca</label><input type="text" id="vd_placa" style="text-transform:uppercase" autocapitalize="characters" spellcheck="false" autocomplete="off"><span class="hint" id="vd_plres"></span></div>
+    <div class="field" data-vd="troca"><label for="vd_nome">Modelo da troca</label><input type="text" id="vd_nome" autocomplete="off"></div>
     <div class="field" data-vd="troca"><label for="vd_ano">Ano</label><input type="text" id="vd_ano" inputmode="numeric"></div>
-    <div class="field" data-vd="troca"><label for="vd_km">KM</label><input type="text" id="vd_km" inputmode="numeric" data-milhar placeholder="Ex.: 85.000"></div>
-    <div class="field" data-vd="troca"><label for="vd_valor">Valor em que pegamos o carro</label><input type="text" id="vd_valor" inputmode="decimal" data-money placeholder="R$ 0,00"></div>`;
-  if (temRec) h += `<div class="field full" data-vdbox><label>Como recebemos</label><span class="hint">Recebimento já programado. <button type="button" class="linkbtn" data-act="receipts" data-id="${existing.id}">Ver recebimentos</button></span></div>`;
-  else h += `<div class="field row-start" data-vdbox><label for="vd_modo">Como recebemos o dinheiro</label><select id="vd_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option><option value="livre">Personalizado</option></select></div>
-    <div class="field" data-vd2="prazo parcelado livre"><label for="vd_ent">Entrada recebida na hora</label><input type="text" id="vd_ent" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
-    <div class="field" data-vd2="prazo"><label for="vd_prazo">Prazo do restante</label><select id="vd_prazo">${opt(CP_PRAZOS, (x) => x + ' dias', 30)}<option value="data">Data específica</option></select></div>
+    <div class="field" data-vd="troca"><label for="vd_km">KM</label><input type="text" id="vd_km" inputmode="numeric" data-milhar></div>
+    <div class="field" data-vd="troca"><label for="vd_valor">Valor da troca</label><input type="text" id="vd_valor" inputmode="decimal" data-money placeholder="R$ 0,00"></div>`;
+  if (temRec) h += `<div class="field full" data-vdbox><label>Recebimento</label><span class="hint">Já programado. <button type="button" class="linkbtn" data-act="receipts" data-id="${existing.id}">Ver recebimentos</button></span></div>`;
+  else h += `<div class="field row-start" data-vdbox><label for="vd_modo">Recebimento</label><select id="vd_modo"><option value="">À vista</option><option value="prazo">A prazo</option><option value="parcelado">Parcelado</option><option value="livre">Personalizado</option></select></div>
+    <div class="field" data-vd2="prazo parcelado livre"><label for="vd_ent">Entrada</label><input type="text" id="vd_ent" inputmode="decimal" data-money placeholder="R$ 0,00"></div>
+    <div class="field" data-vd2="prazo"><label for="vd_prazo">Prazo</label><select id="vd_prazo">${opt(CP_PRAZOS, (x) => x + ' dias', 30)}<option value="data">Data específica</option></select></div>
     <div class="field" data-vd2="prazo-data"><label for="vd_data">Data do pagamento</label><input type="date" id="vd_data"></div>
-    <div class="field" data-vd2="parcelado"><label for="vd_n">Parcelas do restante</label><select id="vd_n">${opt(CP_PARCELAS, (x) => x + 'x', 2)}</select></div>
-    <div class="field" data-vd2="parcelado"><label for="vd_first">1º vencimento</label><input type="date" id="vd_first"><span class="hint">Vazio: 1 mês depois da venda.</span></div>
+    <div class="field" data-vd2="parcelado"><label for="vd_n">Parcelas</label><select id="vd_n">${opt(CP_PARCELAS, (x) => x + 'x', 2)}</select></div>
+    <div class="field" data-vd2="parcelado"><label for="vd_first">1º vencimento</label><input type="date" id="vd_first"></div>
     ${cronoHtml('vd_crono', 'data-vd2="livre"')}`;
   return h + '<div class="field full cp-prev" id="vd_prev"></div>';
 }

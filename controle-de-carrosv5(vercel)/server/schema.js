@@ -43,6 +43,7 @@ const entities = {
       dono: { t: 'text', max: 80, label: L('Dono do carro (consignado)') },
       repasse: { t: 'money', label: L('Repasse ao dono (valor mínimo)') },
       donoSocio: { t: 'bool', label: L('Dono é sócio no lucro (proporcional)') },
+      donoPct: { t: 'pct', label: L('Lucro do dono (%)') }, // vazio = proporcional à parte dele no carro
       anun: { t: 'money', label: L('Preço de anúncio') },
       loc: { t: 'enum', values: lists.locs, label: L('Onde está agora') },
       locdet: { t: 'text', max: 120, label: L('Local') },
