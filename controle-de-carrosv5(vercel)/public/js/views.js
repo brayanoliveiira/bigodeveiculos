@@ -372,18 +372,22 @@ views.onde = {
 
 views.gastos = {
   mount(el) {
-    el.innerHTML = `<div class="toolbar"><select id="gcar" class="grow" aria-label="Filtrar por carro"></select><select id="gquem" aria-label="Filtrar por sócio"><option value="">Todos os sócios</option>${['A', 'B'].map((p) => `<option value="${p}"${S.ui.gquem === p ? ' selected' : ''}>${esc(nm(p))}</option>`).join('')}</select>${S.canWrite ? '<button class="btn pri" data-act="new-exp">Novo gasto</button>' : ''}</div><div id="list"></div>`;
+    el.innerHTML = `<div class="toolbar"><div class="chips" id="gstchips"></div></div><div class="toolbar"><select id="gcar" class="grow" aria-label="Filtrar por carro"></select><select id="gquem" aria-label="Filtrar por sócio"><option value="">Todos os sócios</option>${['A', 'B'].map((p) => `<option value="${p}"${S.ui.gquem === p ? ' selected' : ''}>${esc(nm(p))}</option>`).join('')}</select>${S.canWrite ? '<button class="btn pri" data-act="new-exp">Novo gasto</button>' : ''}</div><div id="list"></div>`;
     $('#gcar').onchange = function () { S.ui.gcar = this.value; views.gastos.paint(); };
     $('#gquem').onchange = function () { S.ui.gquem = this.value; views.gastos.paint(); };
+
     this.paint();
   },
   paint() {
     const box = $('#list');
     if (!box) return;
     $('#gcar').innerHTML = carOptions(S.ui.gcar);
+    $('#gstchips').innerHTML = [['', 'Todos'], ['pend', 'Pendentes'], ['quit', 'Quitados']].map(([k, l]) => `<button class="chip" data-act="gst-f" data-id="${k}" aria-pressed="${(S.ui.gst || '') === k}" title="${k === 'pend' ? 'Gastos no cartão com parcela a pagar' : k === 'quit' ? 'Pagos à vista ou com o cartão todo pago' : ''}">${l}</button>`).join('');
     const all = S.expenses.filter((x) => !x.deleted);
+    // pendente: gasto no cartão com parcela ainda não paga; o resto (à vista ou cartão todo pago) está quitado
+    const pendente = (x) => { const g = S.DV.porGasto && S.DV.porGasto[x.id]; return !!g && g.falta > 0.004; };
     if (!all.length) { box.innerHTML = empty('Nenhum gasto lançado', 'Lance cada gasto com o carro, a categoria e quem pagou. Ele entra no custo do carro na hora.', 'Lançar primeiro gasto', 'new-exp'); return; }
-    const rows = all.filter((x) => (!S.ui.gcar || String(x.carId) === S.ui.gcar) && (!S.ui.gquem || x.quem === S.ui.gquem || !x.quem)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const rows = all.filter((x) => (!S.ui.gcar || String(x.carId) === S.ui.gcar) && (!S.ui.gquem || x.quem === S.ui.gquem || !x.quem) && (!S.ui.gst || (S.ui.gst === 'pend') === pendente(x))).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const sum = (arr) => arr.reduce((a, x) => a + (Calc.num(x.valor) || 0), 0);
     const parte = (p) => rows.reduce((a, x) => a + (x.quem === p ? (Calc.num(x.valor) || 0) : x.quem ? 0 : (Calc.num(x.valor) || 0) / 2), 0);
     // faturas do cartão ainda não pagas (todos os gastos, sem filtro)
@@ -399,7 +403,7 @@ views.gastos = {
     };
     h += '<div class="tbl"><table><thead><tr><th>Data</th><th>Carro</th><th>Categoria</th><th>Descrição</th><th class="r">Valor</th><th>Quem</th><th></th></tr></thead><tbody>' + rows.map((x) =>
       `<tr><td class="num">${dmy(x.date)}</td><td>${esc(carName(x.carId))}</td><td>${esc(x.cat || '')}</td><td>${esc(x.desc || '')}${x.obs ? `<div class="mut" style="font-size:12px">${esc(x.obs)}</div>` : ''}</td><td class="r num">${brl(Calc.num(x.valor))}${cartaoTxt(x)}</td><td>${x.quem ? esc(nm(x.quem)) : 'Metade cada'}</td><td style="white-space:nowrap">${S.canWrite ? `<button class="btn sm" data-act="edit-exp" data-id="${x.id}">Editar</button> <button class="btn sm danger" data-act="del-exp" data-id="${x.id}">Excluir</button>` : ''}</td></tr>`).join('') + '</tbody></table></div>';
-    box.innerHTML = rows.length ? h : '<div class="empty"><p class="mut" style="margin:0">Nenhum gasto com esse filtro.</p></div>';
+    box.innerHTML = rows.length ? h : `<div class="empty"><p class="mut" style="margin:0">${S.ui.gst === 'pend' ? 'Nenhum gasto com parcela do cartão a pagar.' : 'Nenhum gasto com esse filtro.'}</p></div>`;
   },
 };
 

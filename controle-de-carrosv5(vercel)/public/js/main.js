@@ -256,6 +256,7 @@ document.addEventListener('click', async (ev) => {
     case 'edit-car': openForm('car', itemOf('car', id)); break;
     case 'sell-car': it = itemOf('car', id); openForm('car', it, { vender: true, heading: `Vender ${it.name}` }); break;
     case 'car-gastos': S.ui.gcar = String(id); go('gastos'); break;
+    case 'gst-f': S.ui.gst = id || ''; views.gastos.paint(); break;
     case 'cg-f': S.ui.cgf = id; views.consignados.paint(); break;
     case 'so-f': S.ui.sof = id; views.socios.paint(); break;
     case 'so-per': S.ui.sper = id; views.socios.paint(); break;
